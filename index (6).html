@@ -1,0 +1,901 @@
+<!DOCTYPE html>
+<html lang="es">
+<head>
+<meta charset="UTF-8"/>
+<meta name="viewport" content="width=device-width, initial-scale=1.0, maximum-scale=1.0, user-scalable=no"/>
+<meta name="apple-mobile-web-app-capable" content="yes"/>
+<meta name="mobile-web-app-capable" content="yes"/>
+<meta name="apple-mobile-web-app-title" content="Importcells"/>
+<meta name="theme-color" content="#0a0f1e"/>
+<link rel="manifest" href="manifest.json"/>
+<title>Importcells</title>
+<script src="https://cdnjs.cloudflare.com/ajax/libs/react/18.2.0/umd/react.production.min.js"></script>
+<script src="https://cdnjs.cloudflare.com/ajax/libs/react-dom/18.2.0/umd/react-dom.production.min.js"></script>
+<script src="https://cdnjs.cloudflare.com/ajax/libs/babel-standalone/7.23.2/babel.min.js"></script>
+<script src="https://unpkg.com/html5-qrcode@2.3.8/html5-qrcode.min.js"></script>
+<style>
+*{box-sizing:border-box;margin:0;padding:0;-webkit-tap-highlight-color:transparent;}
+html,body{height:100%;background:#0a0f1e;color:#e2e8f0;font-family:-apple-system,'Segoe UI',sans-serif;overflow:hidden;font-size:16px;}
+#root{height:100%;display:flex;flex-direction:column;}
+input,select,button,textarea{font-family:inherit;}
+@keyframes spin{to{transform:rotate(360deg);}}
+@keyframes slideUp{from{transform:translateY(20px);opacity:0;}to{transform:translateY(0);opacity:1;}}
+.su{animation:slideUp 0.2s ease;}
+::-webkit-scrollbar{width:0;}
+input[type=number]::-webkit-outer-spin-button,input[type=number]::-webkit-inner-spin-button{-webkit-appearance:none;}
+</style>
+</head>
+<body>
+<div id="root"></div>
+<script type="text/babel">
+const {useState,useEffect,useRef,useCallback}=React;
+const SURL="https://jynutowszhieupuatmfc.supabase.co";
+const SKEY="eyJhbGciOiJIUzI1NiIsInR5cCI6IkpXVCJ9.eyJpc3MiOiJzdXBhYmFzZSIsInJlZiI6Imp5bnV0b3dzemhpZXVwdWF0bWZjIiwicm9sZSI6ImFub24iLCJpYXQiOjE3ODI1MTQ5NzYsImV4cCI6MjA5ODA5MDk3Nn0.MdMJJAVnYgeQweRl_8Ef2eWj1RdOW78CVprxE6-XPJc";
+async function dbq(t,m,b,f){
+  const r=await fetch(SURL+"/rest/v1/"+t+(f||""),{method:m||"GET",headers:{"apikey":SKEY,"Authorization":"Bearer "+SKEY,"Content-Type":"application/json","Prefer":"return=representation"},body:b?JSON.stringify(b):null});
+  if(!r.ok)throw new Error(await r.text());
+  const tx=await r.text();return tx?JSON.parse(tx):[];
+}
+const api={get:(t,f)=>dbq(t,"GET",null,f||""),post:(t,b)=>dbq(t,"POST",b,""),patch:(t,id,b)=>dbq(t,"PATCH",b,"?id=eq."+id),del:(t,id)=>dbq(t,"DELETE",null,"?id=eq."+id)};
+
+const C={bg:"#0a0f1e",surface:"#111827",card:"rgba(17,24,39,0.97)",border:"rgba(99,179,237,0.15)",blue:"#38bdf8",blueDim:"rgba(56,189,248,0.12)",green:"#4ade80",greenDim:"rgba(74,222,128,0.12)",red:"#f87171",redDim:"rgba(248,113,113,0.15)",amber:"#fbbf24",amberDim:"rgba(251,191,36,0.12)",purple:"#a78bfa",purpleDim:"rgba(167,139,250,0.12)",text:"#e2e8f0",muted:"#64748b",cyan:"#38bdf8"};
+const IS={background:"rgba(255,255,255,0.06)",border:"1px solid rgba(99,179,237,0.2)",borderRadius:12,padding:"14px 16px",color:C.text,fontSize:16,outline:"none",width:"100%",WebkitAppearance:"none"};
+const LS={color:C.muted,fontSize:12,fontWeight:600,marginBottom:6,display:"block",textTransform:"uppercase",letterSpacing:"0.5px"};
+const KS={background:C.card,border:"1px solid "+C.border,borderRadius:16,padding:18,marginBottom:14};
+const TIENDAS=["Almacén Central","NM 3","NM A6","NM D5","PD C","PD S"];
+const TIENDAS_EMP=["NM 3","NM A6","NM D5","PD C","PD S"];
+const MARCAS=["Apple","Samsung","Xiaomi","Motorola","Huawei","OnePlus","Google","Sony","Realme","OPPO","Vivo","Nokia","Honor","Tecno"];
+const ALMS=["32GB","64GB","128GB","256GB","512GB","1TB"];
+const RAMS=["2GB","3GB","4GB","6GB","8GB","12GB","16GB","24GB"];
+const COLORES=["Negro","Blanco","Azul","Rojo","Verde","Morado","Rosa","Dorado","Plateado","Gris","Titanio","Celeste","Naranja"];
+const ACCS=["Funda","Protector de pantalla","Cargador","Audífonos","Cable USB","Otros"];
+const INIT_USERS=[
+  {nombre:"Anthony",username:"anthony",password:"tonny@",rol:"admin",tienda:null},
+  {nombre:"Linet",username:"linet",password:"linet123",rol:"admin",tienda:null},
+  {nombre:"Jeremy",username:"jeremy",password:"jere123",rol:"empleado",tienda:null},
+  {nombre:"Alessandro",username:"alessandro",password:"ales1234",rol:"empleado",tienda:null},
+  {nombre:"Mili",username:"mili",password:"mili12",rol:"empleado",tienda:null},
+  {nombre:"Almacén Central",username:"almacen",password:"almacen123",rol:"almacen",tienda:"Almacén Central"},
+  {nombre:"NM 3",username:"nm3",password:"nm3123",rol:"tienda",tienda:"NM 3"},
+  {nombre:"NM A6",username:"nma6",password:"nma6123",rol:"tienda",tienda:"NM A6"},
+  {nombre:"NM D5",username:"nmd5",password:"nmd5123",rol:"tienda",tienda:"NM D5"},
+  {nombre:"PD C",username:"pdc",password:"pdc123",rol:"tienda",tienda:"PD C"},
+  {nombre:"PD S",username:"pds",password:"pds123",rol:"tienda",tienda:"PD S"},
+];
+
+function badge(type){
+  const m={pagado:[C.greenDim,C.green],pendiente:[C.redDim,C.red],parcial:[C.amberDim,C.amber],disponible:[C.blueDim,C.blue],vendido:[C.redDim,C.red],entregado:[C.amberDim,C.amber],devuelto:[C.purpleDim,C.purple],anulado:[C.redDim,C.red],registrado:[C.greenDim,C.green],libre:[C.blueDim,C.blue]};
+  const [bg,color]=m[type]||[C.bg,C.muted];
+  return{background:bg,color,padding:"4px 12px",borderRadius:99,fontSize:12,fontWeight:700,display:"inline-block",border:"1px solid "+color+"44"};
+}
+
+function Btn({children,onClick,variant="primary",full,small,disabled,style={}}){
+  const v={primary:{background:C.blue,color:"#0a0f1e",border:"none"},ghost:{background:"rgba(255,255,255,0.06)",color:C.muted,border:"1px solid rgba(99,179,237,0.2)"},success:{background:C.green,color:"#0a0f1e",border:"none"},danger:{background:C.red,color:"#fff",border:"none"},amber:{background:C.amber,color:"#000",border:"none"},wa:{background:"#25d366",color:"#fff",border:"none"}};
+  return <button onClick={onClick} disabled={disabled} style={{...v[variant],padding:small?"11px 18px":"15px 22px",borderRadius:14,cursor:"pointer",fontWeight:700,fontSize:small?14:16,width:full?"100%":"auto",opacity:disabled?0.6:1,display:"flex",alignItems:"center",justifyContent:"center",gap:8,...style}}>{children}</button>;
+}
+function Spin(){return <div style={{display:"flex",alignItems:"center",justifyContent:"center",padding:48}}><div style={{width:36,height:36,border:"3px solid "+C.border,borderTop:"3px solid "+C.blue,borderRadius:"50%",animation:"spin 0.8s linear infinite"}}/></div>;}
+function Toast({msg,onClose}){
+  useEffect(()=>{if(msg){const t=setTimeout(onClose,3500);return()=>clearTimeout(t);}});
+  if(!msg)return null;
+  return <div style={{position:"fixed",top:16,left:16,right:16,zIndex:9999,background:msg.t==="ok"?C.green:C.red,color:"#fff",borderRadius:14,padding:"14px 18px",fontSize:15,fontWeight:600,boxShadow:"0 8px 32px rgba(0,0,0,0.3)"}} className="su">{msg.t==="ok"?"✅ ":"❌ "}{msg.m}</div>;
+}
+function Field({label,value,onChange,type,placeholder,options}){
+  if(options)return <div><label style={LS}>{label}</label><select style={{...IS,appearance:"none"}} value={value||""} onChange={e=>onChange&&onChange(e.target.value)}>{options.map(o=><option key={o.v||o} value={o.v||o}>{o.l||o}</option>)}</select></div>;
+  return <div><label style={LS}>{label}</label><input style={IS} type={type||"text"} value={value||""} placeholder={placeholder} onChange={e=>onChange&&onChange(e.target.value)}/></div>;
+}
+
+function QRScanner({onScan,onClose}){
+  const [detected,setDetected]=useState(null);
+  const scannerRef=useRef(null);
+  useEffect(()=>{
+    const scanner=new Html5Qrcode("qr-web-box");
+    scannerRef.current=scanner;
+    scanner.start({facingMode:"environment"},{fps:10,qrbox:{width:300,height:120}},text=>{
+      const clean=text.replace(/\s/g,"");
+      if(/^\d{15}$/.test(clean))setDetected(clean);
+      else setDetected({rejected:clean.length>20?clean.substring(0,20)+"...":clean});
+    },()=>{}).catch(()=>{});
+    return()=>{scanner.stop().catch(()=>{});};
+  },[]);
+  function confirm(){if(detected&&!detected.rejected){scannerRef.current&&scannerRef.current.stop().catch(()=>{});onScan(detected);}}
+  return <div style={{position:"fixed",inset:0,background:"rgba(0,0,0,0.95)",zIndex:9999,display:"flex",flexDirection:"column"}}>
+    <div style={{padding:"16px 20px",display:"flex",alignItems:"center",justifyContent:"space-between",background:"rgba(0,0,0,0.5)"}}>
+      <span style={{color:"#fff",fontWeight:800,fontSize:18}}>⬛ Escanear IMEI (15 dígitos)</span>
+      <button onClick={onClose} style={{background:"rgba(255,255,255,0.15)",border:"none",color:"#fff",padding:"8px 18px",borderRadius:99,cursor:"pointer",fontSize:15,fontWeight:700}}>✕</button>
+    </div>
+    <div style={{flex:1,display:"flex",flexDirection:"column",alignItems:"center",justifyContent:"center",gap:16,padding:16}}>
+      <div id="qr-web-box" style={{width:"90vw",maxWidth:380,borderRadius:16,overflow:"hidden",border:"3px solid "+(detected&&!detected.rejected?C.green:C.blue)}}/>
+      {!detected&&<div style={{color:"rgba(255,255,255,0.7)",fontSize:14,textAlign:"center"}}>Apuntá al código de barras del IMEI<br/>Solo acepta 15 dígitos numéricos</div>}
+      {detected&&detected.rejected&&<div style={{color:C.amber,fontSize:13,textAlign:"center"}}>⚠️ Detectado: {detected.rejected}<br/>No es IMEI — seguí buscando el de 15 dígitos</div>}
+      {detected&&!detected.rejected&&<div style={{background:C.card,border:"2px solid "+C.green,borderRadius:16,padding:18,width:"90vw",maxWidth:380}}>
+        <div style={{color:C.muted,fontSize:12,marginBottom:4}}>✅ IMEI detectado:</div>
+        <div style={{color:C.green,fontSize:22,fontWeight:900,fontFamily:"monospace",marginBottom:14,letterSpacing:2}}>{detected}</div>
+        <div style={{display:"flex",gap:10}}>
+          <button onClick={()=>setDetected(null)} style={{flex:1,padding:12,borderRadius:12,border:"1px solid "+C.muted,background:"transparent",color:C.muted,fontWeight:700,cursor:"pointer"}}>Reintentar</button>
+          <button onClick={confirm} style={{flex:1,padding:12,borderRadius:12,border:"none",background:C.green,color:"#0a0f1e",fontWeight:800,cursor:"pointer"}}>✓ Usar este IMEI</button>
+        </div>
+      </div>}
+    </div>
+  </div>;
+}
+
+// ─── LOGIN ────────────────────────────────────────────────────────────────
+function Login({onLogin}){
+  const [u,setU]=useState(""); const [p,setP]=useState(""); const [err,setErr]=useState(""); const [loading,setLoading]=useState(false); const [showP,setShowP]=useState(false);
+  const [step,setStep]=useState(1); const [loggedUser,setLoggedUser]=useState(null); const [tienda,setTienda]=useState("NM 3");
+  async function go(){
+    if(!u||!p){setErr("Ingresá usuario y contraseña");return;}
+    setLoading(true);setErr("");
+    try{
+      let users=await api.get("usuarios","?username=eq."+u+"&password=eq."+p);
+      if(users.length===0){
+        const all=await api.get("usuarios","?limit=1");
+        if(all.length===0){for(const usr of INIT_USERS){try{await api.post("usuarios",usr);}catch(e){}}users=await api.get("usuarios","?username=eq."+u+"&password=eq."+p);}
+      }
+      if(users.length>0){
+        const usr=users[0];
+        if(usr.rol==="admin"||usr.rol==="almacen"||usr.rol==="tienda"){onLogin(usr);}
+        else{setLoggedUser(usr);setStep(2);}
+      }else{setErr("Usuario o contraseña incorrectos");}
+    }catch(e){setErr("Error de conexión");}
+    setLoading(false);
+  }
+  function confirmarTienda(){onLogin({...loggedUser,tienda});}
+
+  if(step===2)return <div style={{flex:1,display:"flex",flexDirection:"column",alignItems:"center",justifyContent:"center",padding:24,background:"linear-gradient(135deg, #0a0f1e, #0f2044, #0a1628)",overflowY:"auto"}}>
+    <div style={{width:"100%",maxWidth:420,background:"rgba(17,24,39,0.95)",borderRadius:24,padding:28,border:"1px solid rgba(99,179,237,0.2)"}}>
+      <div style={{textAlign:"center",marginBottom:20}}>
+        <div style={{fontSize:44,marginBottom:8}}>🏪</div>
+        <div style={{color:"#fff",fontSize:20,fontWeight:800}}>Hola, {loggedUser?.nombre}!</div>
+        <div style={{color:C.muted,fontSize:15,marginTop:4}}>¿En qué tienda trabajás hoy?</div>
+      </div>
+      <div style={{display:"flex",flexDirection:"column",gap:10,marginBottom:20}}>
+        {TIENDAS_EMP.map(t=><button key={t} onClick={()=>setTienda(t)} style={{padding:"16px 20px",borderRadius:16,border:"2px solid "+(tienda===t?C.blue:"rgba(99,179,237,0.2)"),background:tienda===t?"rgba(56,189,248,0.12)":"transparent",color:tienda===t?C.blue:C.text,fontSize:17,fontWeight:tienda===t?700:400,cursor:"pointer",textAlign:"left",display:"flex",alignItems:"center",gap:12}}>
+          <span style={{fontSize:20}}>🏪</span>{t}{tienda===t&&<span style={{marginLeft:"auto",color:C.blue}}>✓</span>}
+        </button>)}
+      </div>
+      <Btn onClick={confirmarTienda} full>Entrar a {tienda} →</Btn>
+      <button onClick={()=>setStep(1)} style={{width:"100%",marginTop:12,background:"none",border:"none",color:C.muted,cursor:"pointer",fontSize:14}}>← Cambiar usuario</button>
+    </div>
+  </div>;
+
+  return <div style={{flex:1,display:"flex",flexDirection:"column",alignItems:"center",justifyContent:"center",padding:24,background:"linear-gradient(135deg, #0a0f1e, #0f2044, #0a1628)",overflowY:"auto"}}>
+    <div style={{width:"100%",maxWidth:420,background:"rgba(17,24,39,0.95)",borderRadius:24,padding:28,border:"1px solid rgba(99,179,237,0.2)"}}>
+      <div style={{textAlign:"center",marginBottom:24}}>
+        <div style={{fontSize:48,marginBottom:8}}>📱</div>
+        <div style={{display:"flex",alignItems:"center",justifyContent:"center",gap:4}}>
+          <span style={{fontWeight:900,fontSize:26,color:"#fff"}}>IMPORT</span>
+          <span style={{fontWeight:900,fontSize:26,color:C.blue}}>CELLS</span>
+        </div>
+        <div style={{background:C.blueDim,borderRadius:99,padding:"5px 14px",fontSize:12,color:C.blue,fontWeight:600,display:"inline-block",marginTop:6}}>🟢 Import Sales · Sistema en vivo</div>
+      </div>
+      {err&&<div style={{background:C.redDim,border:"1px solid rgba(248,113,113,0.3)",borderRadius:12,padding:"12px 16px",color:C.red,marginBottom:14,textAlign:"center",fontWeight:600}}>{err}</div>}
+      <div style={{marginBottom:14}}><label style={LS}>Usuario</label><input style={{...IS,fontSize:17}} value={u} placeholder="anthony, jeremy..." autoCapitalize="none" onChange={e=>setU(e.target.value)} onKeyDown={e=>e.key==="Enter"&&go()}/></div>
+      <div style={{marginBottom:20,position:"relative"}}><label style={LS}>Contraseña</label><input style={{...IS,fontSize:17}} type={showP?"text":"password"} value={p} placeholder="••••••" onChange={e=>setP(e.target.value)} onKeyDown={e=>e.key==="Enter"&&go()}/><button onClick={()=>setShowP(!showP)} style={{position:"absolute",right:14,top:34,background:"none",border:"none",color:C.muted,cursor:"pointer",fontSize:18}}>{showP?"🙈":"👁️"}</button></div>
+      <Btn onClick={go} full disabled={loading} style={{fontSize:17,padding:"17px"}}>{loading?"Ingresando...":"Ingresar →"}</Btn>
+    </div>
+  </div>;
+}
+
+// ─── INVENTARIO ────────────────────────────────────────────────────────────
+function Inventario({user}){
+  const [items,setItems]=useState([]); const [modelosSug,setModelosSug]=useState([]); const [loading,setLoading]=useState(true);
+  const [show,setShow]=useState(false); const [saving,setSaving]=useState(false); const [toast,setToast]=useState(null);
+  const [search,setSearch]=useState(""); const [fs,setFs]=useState("todos"); const [showQR,setShowQR]=useState(false);
+  const [editItem,setEditItem]=useState(null);
+  const isAdmin=user.rol==="admin"; const canEdit=user.rol==="admin"||user.rol==="almacen";
+  const E={imei:"",marca:"",modelo:"",color:"",almacenamiento:"",ram:"",precio:"",precio_mayorista:"",costo:"",ubicacion:user.tienda||"Almacén Central",tipo:"libre",notas:""};
+  const [form,setForm]=useState(E); const ff=k=>v=>setForm(p=>({...p,[k]:v}));
+  const [modeloInput,setModeloInput]=useState(""); const [showSug,setShowSug]=useState(false);
+
+  async function load(){setLoading(true);try{setItems(await api.get("inventario","?order=created_at.desc"));}catch(e){setToast({t:"error",m:"Error cargando"});}setLoading(false);}
+  async function loadSug(){try{setModelosSug(await api.get("modelos_guardados","?order=created_at.desc"));}catch(e){}}
+  useEffect(()=>{load();loadSug();},[]);
+
+  function onModeloChange(v){setModeloInput(v);ff("modelo")(v);if(v.length>=2){const q=v.toLowerCase();const f=modelosSug.filter(m=>(m.modelo||"").toLowerCase().includes(q)||(m.marca||"").toLowerCase().includes(q)).slice(0,5);setShowSug(f.length>0);}else setShowSug(false);}
+  function selectSug(m){setForm(p=>({...p,modelo:m.modelo||"",marca:m.marca||p.marca,ram:m.ram||p.ram,almacenamiento:m.almacenamiento||p.almacenamiento}));setModeloInput(m.modelo||"");setShowSug(false);}
+
+  async function add(){
+    if(!form.marca||!form.modelo.trim()){setToast({t:"error",m:"Marca y Modelo son obligatorios"});return;}
+    if(!form.precio||+form.precio<=0){setToast({t:"error",m:"Ingresá un precio válido"});return;}
+    setSaving(true);
+    const obj={imei:form.imei,marca:form.marca,modelo:form.modelo,color:form.color,almacenamiento:form.almacenamiento,ram:form.ram,precio:+form.precio,precio_mayorista:+(form.precio_mayorista||form.precio||0),costo:+(form.costo||0),ubicacion:form.ubicacion,tipo:form.tipo||"libre",estado:"disponible",notas:form.notas,fecha_ingreso:new Date().toISOString()};
+    try{
+      await api.post("inventario",obj);
+      try{await api.post("modelos_guardados",{marca:form.marca,modelo:form.modelo,ram:form.ram,almacenamiento:form.almacenamiento});}catch(e){}
+      setToast({t:"ok",m:"Teléfono agregado"});setForm(E);setModeloInput("");setShow(false);load();loadSug();
+    }catch(e){setToast({t:"error",m:"Error: "+e.message});}
+    setSaving(false);
+  }
+
+  async function saveEdit(){
+    setSaving(true);
+    try{
+      await api.patch("inventario",editItem.id,{marca:form.marca,modelo:form.modelo,color:form.color,almacenamiento:form.almacenamiento,ram:form.ram,precio:+form.precio,precio_mayorista:+(form.precio_mayorista||0),costo:+(form.costo||0),tipo:form.tipo,ubicacion:form.ubicacion,notas:form.notas});
+      setToast({t:"ok",m:"Teléfono actualizado"});setEditItem(null);setForm(E);load();
+    }catch(e){setToast({t:"error",m:"Error: "+e.message});}
+    setSaving(false);
+  }
+
+  const filtered=items.filter(p=>{
+    const q=search.toLowerCase();
+    return(!q||(p.imei||"").includes(q)||(p.marca||"").toLowerCase().includes(q)||(p.modelo||"").toLowerCase().includes(q)||(p.color||"").toLowerCase().includes(q))&&(fs==="todos"||p.estado===fs);
+  });
+  const disponibles=filtered.filter(p=>p.estado==="disponible");
+  const noDisp=filtered.filter(p=>p.estado!=="disponible");
+
+  // Group by modelo
+  function groupBy(arr){const g={};arr.forEach(p=>{const k=(p.marca||"")+" "+(p.modelo||"");g[k]=g[k]||[];g[k].push(p);});return g;}
+  const gDisp=groupBy(disponibles); const gNoDisp=groupBy(noDisp);
+
+  function PhoneCard({p}){
+    const isReg=p.tipo==="registrado";
+    const fi=p.fecha_ingreso?new Date(p.fecha_ingreso):null;
+    const fv=p.fecha_venta?new Date(p.fecha_venta):null;
+    const fmt=d=>d?`${d.getDate().toString().padLeft?d.getDate().toString().padStart(2,"0"):d.getDate()}/${(d.getMonth()+1).toString().padStart(2,"0")} ${d.getHours().toString().padStart(2,"0")}:${d.getMinutes().toString().padStart(2,"0")}`:"";
+    return <div style={{...KS,marginBottom:10,borderLeft:"4px solid "+(isReg?C.green:C.blue),opacity:p.estado==="disponible"?1:0.7}}>
+      {p.imei&&<div style={{fontFamily:"monospace",color:C.blue,fontSize:13,background:C.blueDim,padding:"3px 10px",borderRadius:8,display:"inline-block",marginBottom:6}}>IMEI: {p.imei}</div>}
+      <div style={{display:"flex",flexWrap:"wrap",gap:6,marginBottom:8}}>
+        {p.color&&<span style={{background:"rgba(255,255,255,0.06)",color:C.muted,padding:"2px 8px",borderRadius:6,fontSize:12}}>{p.color}</span>}
+        {p.almacenamiento&&<span style={{background:C.blueDim,color:C.blue,padding:"2px 8px",borderRadius:6,fontSize:12}}>{p.almacenamiento}</span>}
+        {p.ram&&<span style={{background:C.purpleDim,color:C.purple,padding:"2px 8px",borderRadius:6,fontSize:12}}>RAM: {p.ram}</span>}
+        {p.ubicacion&&<span style={{background:C.amberDim,color:C.amber,padding:"2px 8px",borderRadius:6,fontSize:12}}>{p.ubicacion}</span>}
+      </div>
+      <div style={{display:"flex",flexWrap:"wrap",gap:8,alignItems:"center",marginBottom:6}}>
+        <span style={{color:C.green,fontWeight:900,fontSize:18}}>S/.{(p.precio||0).toLocaleString()}</span>
+        {p.precio_mayorista>0&&<span style={{color:C.purple,fontSize:13,background:C.purpleDim,padding:"2px 8px",borderRadius:6}}>May: S/.{p.precio_mayorista}</span>}
+        {isAdmin&&p.costo>0&&<span style={{color:C.muted,fontSize:13}}>Costo: S/.{p.costo}</span>}
+        <span style={badge(p.estado)}>{p.estado}</span>
+        <span style={badge(isReg?"registrado":"libre")}>{isReg?"✅ Reg":"📱 Libre"}</span>
+      </div>
+      <div style={{display:"flex",justifyContent:"space-between",alignItems:"center"}}>
+        <div style={{fontSize:11,color:C.muted}}>
+          {fi&&<span>↓ {fmt(fi)}</span>}
+          {fv&&<span style={{color:C.green,marginLeft:8}}>✓ {fmt(fv)}</span>}
+        </div>
+        {isAdmin&&<button onClick={()=>{setEditItem(p);setForm({imei:p.imei||"",marca:p.marca||"",modelo:p.modelo||"",color:p.color||"",almacenamiento:p.almacenamiento||"",ram:p.ram||"",precio:p.precio||"",precio_mayorista:p.precio_mayorista||"",costo:p.costo||"",ubicacion:p.ubicacion||"Almacén Central",tipo:p.tipo||"libre",notas:p.notas||""});setModeloInput(p.modelo||"");setShow(false);}} style={{background:"rgba(56,189,248,0.1)",border:"1px solid rgba(56,189,248,0.3)",borderRadius:8,padding:"5px 12px",color:C.blue,cursor:"pointer",fontSize:13}}>✏️ Editar</button>}
+      </div>
+    </div>;
+  }
+
+  function SectionHeader({icon,label,count,color,bg}){
+    return <div style={{display:"flex",alignItems:"center",gap:10,marginBottom:10,padding:"10px 14px",background:bg,borderRadius:12,border:"1px solid "+color+"44"}}>
+      <span style={{fontSize:16}}>{icon}</span>
+      <span style={{color,fontWeight:800,fontSize:15}}>{label}</span>
+      <span style={{background:color,color:"#fff",padding:"2px 10px",borderRadius:99,fontSize:12,fontWeight:700,marginLeft:"auto"}}>{count}</span>
+    </div>;
+  }
+
+  function FormPanel({onSave,title,btnText}){
+    return <div style={{...KS,border:"2px solid "+C.blue,marginBottom:16}} className="su">
+      <div style={{color:C.blue,fontWeight:800,fontSize:17,marginBottom:14}}>{title}</div>
+      <div style={{marginBottom:12}}>
+        <label style={LS}>IMEI</label>
+        <div style={{display:"flex",gap:8}}>
+          <input style={{...IS,flex:1}} value={form.imei} placeholder="15 dígitos" onChange={e=>ff("imei")(e.target.value)}/>
+          <button onClick={()=>setShowQR(true)} style={{background:C.blueDim,border:"2px solid "+C.blue,borderRadius:12,padding:"0 16px",cursor:"pointer",fontSize:20,color:C.blue}}>⬛</button>
+        </div>
+      </div>
+      <div style={{display:"grid",gridTemplateColumns:"1fr 1fr",gap:12,marginBottom:12}}>
+        <div><label style={LS}>Marca ★</label><select style={{...IS,appearance:"none"}} value={form.marca} onChange={e=>ff("marca")(e.target.value)}><option value="">Seleccionar...</option>{MARCAS.map(m=><option key={m}>{m}</option>)}</select></div>
+        <div style={{position:"relative"}}>
+          <label style={LS}>Modelo ★</label>
+          <input style={IS} value={modeloInput} placeholder="iPhone 17 Pro..." onChange={e=>onModeloChange(e.target.value)}/>
+          {showSug&&<div style={{position:"absolute",top:"100%",left:0,right:0,background:"#1e293b",borderRadius:10,border:"1px solid "+C.border,zIndex:100}}>
+            {modelosSug.filter(m=>(m.modelo||"").toLowerCase().includes(modeloInput.toLowerCase())||(m.marca||"").toLowerCase().includes(modeloInput.toLowerCase())).slice(0,5).map((m,i)=><div key={i} onClick={()=>selectSug(m)} style={{padding:"10px 14px",cursor:"pointer",borderBottom:"1px solid "+C.border,fontSize:14}}>
+              <div style={{color:C.text,fontWeight:600}}>{m.marca} {m.modelo}</div>
+              {(m.ram||m.almacenamiento)&&<div style={{color:C.muted,fontSize:12}}>{m.ram} {m.almacenamiento}</div>}
+            </div>)}
+          </div>}
+        </div>
+        <div><label style={LS}>Color</label><select style={{...IS,appearance:"none"}} value={form.color} onChange={e=>ff("color")(e.target.value)}><option value="">Seleccionar...</option>{COLORES.map(c=><option key={c}>{c}</option>)}</select></div>
+        <div><label style={LS}>Almacenamiento</label><select style={{...IS,appearance:"none"}} value={form.almacenamiento} onChange={e=>ff("almacenamiento")(e.target.value)}><option value="">Seleccionar...</option>{ALMS.map(a=><option key={a}>{a}</option>)}</select></div>
+        <div><label style={LS}>RAM</label><select style={{...IS,appearance:"none"}} value={form.ram} onChange={e=>ff("ram")(e.target.value)}><option value="">Seleccionar...</option>{RAMS.map(r=><option key={r}>{r}</option>)}</select></div>
+        <div><label style={LS}>Tipo</label><select style={{...IS,appearance:"none"}} value={form.tipo} onChange={e=>ff("tipo")(e.target.value)}><option value="libre">📱 Libre</option><option value="registrado">✅ Registrado</option></select></div>
+        <Field label="Precio público (S/.) ★" value={form.precio} onChange={ff("precio")} type="number"/>
+        <Field label="Precio mayorista (S/.)" value={form.precio_mayorista} onChange={ff("precio_mayorista")} type="number"/>
+        {isAdmin&&<Field label="Costo (S/.) 🔒" value={form.costo} onChange={ff("costo")} type="number"/>}
+        <Field label="Ubicación" value={form.ubicacion} onChange={ff("ubicacion")} options={TIENDAS}/>
+      </div>
+      <Field label="Notas" value={form.notas} onChange={ff("notas")} placeholder="Observaciones..."/>
+      <div style={{display:"flex",gap:10,marginTop:14}}>
+        <Btn onClick={onSave} full disabled={saving}>{saving?"⏳ Guardando...":btnText}</Btn>
+        <Btn onClick={()=>{setShow(false);setEditItem(null);setForm(E);setModeloInput("");}} variant="ghost">✕</Btn>
+      </div>
+    </div>;
+  }
+
+  return <div style={{flex:1,overflowY:"auto",padding:16}}>
+    <Toast msg={toast} onClose={()=>setToast(null)}/>
+    {showQR&&<QRScanner onScan={v=>{ff("imei")(v);setShowQR(false);setToast({t:"ok",m:"IMEI: "+v});}} onClose={()=>setShowQR(false)}/>}
+    <div style={{display:"flex",alignItems:"center",justifyContent:"space-between",marginBottom:16}}>
+      <h2 style={{fontSize:24,fontWeight:900,color:C.text}}>📦 Inventario</h2>
+      <div style={{display:"flex",gap:8}}>
+        <button onClick={load} style={{background:C.card,border:"1px solid "+C.border,borderRadius:12,padding:"10px 14px",color:C.muted,cursor:"pointer"}}>🔄</button>
+        {canEdit&&<Btn onClick={()=>{setShow(!show);setEditItem(null);setForm(E);setModeloInput("");}} small>{show?"✕":"+ Agregar"}</Btn>}
+      </div>
+    </div>
+    <div style={{display:"grid",gridTemplateColumns:"1fr 1fr",gap:10,marginBottom:16}}>
+      {[["Total",items.length,C.blue],["Disponible",items.filter(p=>p.estado==="disponible").length,C.green],["Vendido",items.filter(p=>p.estado==="vendido").length,C.red],["Entregado",items.filter(p=>p.estado==="entregado").length,C.amber]].map(([l,v,c])=><div key={l} style={{background:c+"22",border:"1px solid "+c+"44",borderRadius:16,padding:"14px 12px",textAlign:"center"}}><div style={{fontSize:26,fontWeight:900,color:c}}>{v}</div><div style={{color:c,fontSize:13,fontWeight:600}}>{l}</div></div>)}
+    </div>
+    {show&&!editItem&&<FormPanel onSave={add} title="➕ Nuevo Teléfono" btnText="✓ Guardar teléfono"/>}
+    {editItem&&<FormPanel onSave={saveEdit} title={"✏️ Editar: "+editItem.marca+" "+editItem.modelo} btnText="✓ Guardar cambios"/>}
+    <input style={{...IS,marginBottom:12}} placeholder="🔍 Buscar IMEI, marca o modelo..." value={search} onChange={e=>setSearch(e.target.value)}/>
+    <div style={{display:"flex",gap:8,marginBottom:14,overflowX:"auto",paddingBottom:4}}>
+      {["todos","disponible","entregado","vendido"].map(f=><button key={f} onClick={()=>setFs(f)} style={{padding:"9px 16px",borderRadius:99,border:"1px solid "+(fs===f?C.blue:C.border),background:fs===f?"rgba(56,189,248,0.15)":"rgba(255,255,255,0.05)",color:fs===f?C.blue:C.muted,cursor:"pointer",fontSize:13,fontWeight:600,whiteSpace:"nowrap"}}>{f.charAt(0).toUpperCase()+f.slice(1)}</button>)}
+    </div>
+    {loading?<Spin/>:filtered.length===0?<div style={{textAlign:"center",color:C.muted,padding:40}}>Sin teléfonos</div>:<div>
+      {disponibles.length>0&&<div>
+        <SectionHeader icon="📦" label="Disponibles" count={disponibles.length} color={C.blue} bg={C.blueDim}/>
+        {Object.keys(gDisp).sort().map(k=><div key={k}><div style={{background:"#1e293b",borderRadius:10,padding:"8px 14px",marginBottom:6,display:"flex",justifyContent:"space-between"}}><span style={{color:C.text,fontWeight:700,fontSize:15}}>{k}</span><span style={{color:C.muted,fontSize:12}}>{gDisp[k].length} unidades</span></div>{gDisp[k].map(p=><PhoneCard key={p.id} p={p}/>)}</div>)}
+      </div>}
+      {noDisp.length>0&&<div style={{marginTop:8}}>
+        <SectionHeader icon="✅" label="Vendidos / Entregados" count={noDisp.length} color={C.red} bg={C.redDim}/>
+        {Object.keys(gNoDisp).sort().map(k=><div key={k}><div style={{background:"#1e293b",borderRadius:10,padding:"8px 14px",marginBottom:6,display:"flex",justifyContent:"space-between"}}><span style={{color:"#94a3b8",fontWeight:700,fontSize:15}}>{k}</span><span style={{color:C.muted,fontSize:12}}>{gNoDisp[k].length} unidades</span></div>{gNoDisp[k].map(p=><PhoneCard key={p.id} p={p}/>)}</div>)}
+      </div>}
+    </div>}
+  </div>;
+}
+
+// ─── ENTREGAS ──────────────────────────────────────────────────────────────
+function Entregas({user}){
+  const [list,setList]=useState([]); const [dist,setDist]=useState([]); const [inv,setInv]=useState([]);
+  const [loading,setLoading]=useState(true); const [show,setShow]=useState(false); const [saving,setSaving]=useState(false);
+  const [fs,setFs]=useState("todos"); const [toast,setToast]=useState(null); const [showQR,setShowQR]=useState(false);
+  const E={inv_id:"",dist_id:"",marca:"",modelo:"",imei:"",almacenamiento:"",precio:"",pagado:"0",metodo:"transferencia",notas:""};
+  const [form,setForm]=useState(E); const ff=k=>v=>setForm(p=>({...p,[k]:v}));
+  async function load(){setLoading(true);try{const [d,r,i]=await Promise.all([api.get("entregas","?order=created_at.desc"),api.get("revendedores","?order=nombre.asc"),api.get("inventario","?estado=eq.disponible&order=marca.asc")]);setList(d);setDist(r);setInv(i);}catch(e){setToast({t:"error",m:"Error"});}setLoading(false);}
+  useEffect(()=>{load();},[]);
+
+  function handleQR(imei){
+    setShowQR(false);
+    const found=inv.find(p=>p.imei===imei);
+    if(found){setForm(p=>({...p,inv_id:found.id,marca:found.marca||"",modelo:found.modelo||"",imei:found.imei||"",almacenamiento:found.almacenamiento||"",precio:(found.precio_mayorista>0?found.precio_mayorista:found.precio)||""}));if(!show)setShow(true);setToast({t:"ok",m:"✅ "+found.marca+" "+found.modelo+" cargado"});}
+    else{ff("imei")(imei);setToast({t:"ok",m:"IMEI escaneado: "+imei});}
+  }
+
+  async function submit(){
+    if(!form.dist_id){setToast({t:"error",m:"⚠️ El Distribuidor es obligatorio"});return;}
+    if(!form.modelo.trim()){setToast({t:"error",m:"⚠️ El Modelo es obligatorio"});return;}
+    if(!form.imei.trim()){setToast({t:"error",m:"⚠️ El IMEI es obligatorio"});return;}
+    const precio=+form.precio;if(precio<=0){setToast({t:"error",m:"⚠️ Ingresá un precio válido"});return;}
+    setSaving(true);
+    try{
+      const r=dist.find(x=>x.id===form.dist_id)||{};
+      const paid=Math.min(+(form.pagado||0),precio);
+      const ps=paid>=precio?"pagado":paid>0?"parcial":"pendiente";
+      const now=new Date();
+      const obj={revendedor_id:form.dist_id,revendedor_nombre:r.nombre||"",revendedor_telefono:r.telefono||"",empleado_nombre:user.nombre,marca:form.marca,modelo:form.modelo,imei:form.imei,almacenamiento:form.almacenamiento,precio,pagado:paid,estado_pago:ps,metodo_pago:form.metodo,fecha_entrega:now.toISOString().substring(0,10),hora_entrega:now.toTimeString().substring(0,5),notas:form.notas};
+      await api.post("entregas",obj);
+      if(form.inv_id)await api.patch("inventario",form.inv_id,{estado:"entregado"});
+      setToast({t:"ok",m:"Entrega registrada"});setForm(E);setShow(false);load();
+    }catch(e){setToast({t:"error",m:"Error: "+e.message});}
+    setSaving(false);
+  }
+
+  async function markPaid(id,precio){const d=list.find(x=>x.id===id);if(!d)return;await api.patch("entregas",id,{pagado:precio,estado_pago:"pagado"});load();}
+  async function devolver(id,invId){if(!confirm("¿Devolver al inventario?"))return;await api.patch("entregas",id,{estado_pago:"devuelto"});if(invId)try{await api.patch("inventario",invId,{estado:"disponible"});}catch(e){}setToast({t:"ok",m:"Teléfono devuelto"});load();}
+  async function openWA(phone,msg){const clean=phone.replace(/[^0-9]/g,"");let num=clean;if(!num.startsWith("51"))num="51"+num;const uri="whatsapp://send?phone="+num+"&text="+encodeURIComponent(msg);window.open("https://wa.me/"+num+"?text="+encodeURIComponent(msg));}
+
+  const filtered=list.filter(d=>fs==="todos"||d.estado_pago===fs);
+  const pendTotal=list.filter(d=>d.estado_pago!=="pagado"&&d.estado_pago!=="devuelto").reduce((a,d)=>a+(d.precio-d.pagado),0);
+
+  return <div style={{flex:1,overflowY:"auto",padding:16}}>
+    <Toast msg={toast} onClose={()=>setToast(null)}/>
+    {showQR&&<QRScanner onScan={handleQR} onClose={()=>setShowQR(false)}/>}
+    <div style={{display:"flex",alignItems:"flex-start",justifyContent:"space-between",marginBottom:12}}>
+      <div>
+        <h2 style={{fontSize:24,fontWeight:900}}>🚚 Entregas</h2>
+        {pendTotal>0&&<div style={{background:C.redDim,color:C.red,fontSize:13,fontWeight:700,marginTop:4,padding:"3px 12px",borderRadius:99,display:"inline-block"}}>🔴 Por cobrar: S/.{pendTotal.toLocaleString()}</div>}
+      </div>
+      <div style={{display:"flex",gap:8}}>
+        <button onClick={()=>setShowQR(true)} style={{background:C.blueDim,border:"2px solid "+C.blue,borderRadius:12,padding:"10px 14px",cursor:"pointer",fontSize:18,color:C.blue}}>⬛</button>
+        <Btn onClick={()=>{setShow(!show);setForm(E);}} small>{show?"✕":"+ Nueva"}</Btn>
+      </div>
+    </div>
+    {show&&<div style={{...KS,border:"2px solid "+C.blue,marginBottom:16}} className="su">
+      <div style={{color:C.blue,fontWeight:800,fontSize:17,marginBottom:14}}>📦 Nueva Entrega</div>
+      <div style={{marginBottom:12}}>
+        <label style={LS}>Distribuidor ★</label>
+        <select style={{...IS,appearance:"none"}} value={form.dist_id} onChange={e=>ff("dist_id")(e.target.value)}>
+          <option value="">Seleccionar distribuidor...</option>
+          {dist.map(r=><option key={r.id} value={r.id}>{r.nombre}</option>)}
+        </select>
+      </div>
+      <div style={{marginBottom:12}}>
+        <label style={LS}>Del inventario (opcional)</label>
+        <select style={{...IS,appearance:"none"}} value={form.inv_id} onChange={e=>{const ph=inv.find(p=>p.id===e.target.value);if(ph)setForm(p=>({...p,inv_id:e.target.value,marca:ph.marca||"",modelo:ph.modelo||"",imei:ph.imei||"",almacenamiento:ph.almacenamiento||"",precio:(ph.precio_mayorista>0?ph.precio_mayorista:ph.precio)||""}));else ff("inv_id")("");}}>
+          <option value="">— Manual —</option>
+          {inv.map(p=><option key={p.id} value={p.id}>{p.marca} {p.modelo} {p.almacenamiento} — IMEI: {p.imei||"sin IMEI"}</option>)}
+        </select>
+      </div>
+      <div style={{display:"grid",gridTemplateColumns:"1fr 1fr",gap:12,marginBottom:12}}>
+        <Field label="Modelo ★" value={form.modelo} onChange={ff("modelo")} placeholder="iPhone 17 Pro"/>
+        <div><label style={LS}>IMEI ★</label><div style={{display:"flex",gap:8}}><input style={{...IS,flex:1}} value={form.imei} placeholder="15 dígitos" onChange={e=>ff("imei")(e.target.value)}/><button onClick={()=>setShowQR(true)} style={{background:C.blueDim,border:"1px solid "+C.blue,borderRadius:10,padding:"0 12px",cursor:"pointer",color:C.blue}}>⬛</button></div></div>
+        <Field label="Precio (S/.) ★" value={form.precio} onChange={ff("precio")} type="number"/>
+        <Field label="Abono (S/.)" value={form.pagado} onChange={ff("pagado")} type="number"/>
+      </div>
+      <Field label="Forma de pago" value={form.metodo} onChange={ff("metodo")} options={[{v:"transferencia",l:"Transferencia"},{v:"efectivo",l:"Efectivo"},{v:"tarjeta",l:"Tarjeta"}]}/>
+      <div style={{marginTop:12}}><Field label="Notas" value={form.notas} onChange={ff("notas")} placeholder="Notas..."/></div>
+      <div style={{display:"flex",gap:10,marginTop:14}}>
+        <Btn onClick={submit} full disabled={saving}>{saving?"⏳ Guardando...":"✓ Registrar entrega"}</Btn>
+        <Btn onClick={()=>setShow(false)} variant="ghost">✕</Btn>
+      </div>
+    </div>}
+    <div style={{display:"flex",gap:8,marginBottom:14,overflowX:"auto"}}>
+      {["todos","pendiente","parcial","pagado"].map(f=><button key={f} onClick={()=>setFs(f)} style={{padding:"9px 16px",borderRadius:99,border:"1px solid "+(fs===f?C.blue:C.border),background:fs===f?"rgba(56,189,248,0.15)":"rgba(255,255,255,0.05)",color:fs===f?C.blue:C.muted,cursor:"pointer",fontSize:13,fontWeight:600,whiteSpace:"nowrap"}}>{f.charAt(0).toUpperCase()+f.slice(1)}</button>)}
+      <button onClick={load} style={{padding:"9px 14px",borderRadius:99,border:"1px solid "+C.border,background:"rgba(255,255,255,0.05)",color:C.muted,cursor:"pointer"}}>🔄</button>
+    </div>
+    {loading?<Spin/>:filtered.length===0?<div style={{textAlign:"center",color:C.muted,padding:40}}>Sin entregas</div>:filtered.map(d=>{
+      const falta=(d.precio||0)-(d.pagado||0);
+      const color=d.estado_pago==="pagado"?C.green:d.estado_pago==="parcial"?C.amber:C.red;
+      const phone=(d.revendedor_telefono||"");
+      const waMsg="Hola "+d.revendedor_nombre+"! Recordatorio:\n📱 "+(d.marca||"")+" "+d.modelo+"\n🔴 Debe: S/."+falta.toFixed(0);
+      return <div key={d.id} style={{...KS,borderLeft:"4px solid "+color,opacity:d.estado_pago==="pagado"?0.7:1}}>
+        <div style={{display:"flex",justifyContent:"space-between",marginBottom:8}}>
+          <div><div style={{fontWeight:800,fontSize:17}}>{d.revendedor_nombre||"Sin dist."}</div><div style={{color:C.muted,fontSize:12}}>{d.fecha_entrega} {d.hora_entrega} · {d.empleado_nombre}</div></div>
+          <span style={badge(d.estado_pago)}>{d.estado_pago}</span>
+        </div>
+        <div style={{fontWeight:600,fontSize:15,marginBottom:4}}>{d.marca} {d.modelo} {d.almacenamiento}</div>
+        {d.imei&&<div style={{fontFamily:"monospace",color:C.blue,fontSize:13,marginBottom:8}}>IMEI: {d.imei}</div>}
+        <div style={{display:"flex",justifyContent:"space-between",marginBottom:falta>0?10:0}}>
+          <span style={{color:C.green,fontWeight:900,fontSize:19}}>S/.{(d.precio||0).toLocaleString()}</span>
+          <span style={{color:C.muted,fontSize:13}}>Abonado: S/.{(d.pagado||0).toLocaleString()}</span>
+        </div>
+        {falta>0&&<div style={{background:C.redDim,borderRadius:10,padding:"8px 14px",color:C.red,fontWeight:700,marginBottom:12,textAlign:"center"}}>🔴 Debe: S/.{falta.toLocaleString()}</div>}
+        {d.estado_pago!=="pagado"&&d.estado_pago!=="devuelto"&&<div style={{display:"flex",flexWrap:"wrap",gap:8}}>
+          <Btn onClick={()=>markPaid(d.id,d.precio)} variant="success" small style={{flex:1}}>✓ Pagado</Btn>
+          <Btn onClick={()=>devolver(d.id,d.inventario_id)} variant="danger" small>↩ Dev.</Btn>
+          {phone&&<Btn onClick={()=>openWA(phone,waMsg)} variant="wa" small style={{}}>💬 WA</Btn>}
+        </div>}
+      </div>;
+    })}
+  </div>;
+}
+
+// ─── VENTAS ────────────────────────────────────────────────────────────────
+function Ventas({user}){
+  const [sales,setSales]=useState([]); const [inv,setInv]=useState([]);
+  const [loading,setLoading]=useState(true); const [show,setShow]=useState(false); const [saving,setSaving]=useState(false);
+  const [toast,setToast]=useState(null); const [showQR,setShowQR]=useState(false); const [detail,setDetail]=useState(null);
+  const isAdmin=user.rol==="admin";
+  const E={inv_id:"",imei:"",modelo:"",tienda:user.tienda||"NM 3",cliente:"",precio:"",efectivo:"",yape:"",transferencia:"",notas:"",accesorios:{}};
+  const [form,setForm]=useState(E); const ff=k=>v=>setForm(p=>({...p,[k]:v}));
+  const [accPrecios,setAccPrecios]=useState({});
+
+  async function load(){
+    setLoading(true);
+    try{
+      let s;
+      if(isAdmin){s=await api.get("ventas","?order=created_at.desc");}
+      else{const todas=await api.get("ventas","?order=created_at.desc");const nom=(user.nombre||"").toLowerCase();s=todas.filter(v=>(v.empleado||"").toLowerCase()===nom||(v.empleado||"").toLowerCase().includes(nom));}
+      const i=await api.get("inventario","?estado=eq.disponible&order=marca.asc");
+      setSales(s);setInv(i);
+    }catch(e){setToast({t:"error",m:"Error"});}
+    setLoading(false);
+  }
+  useEffect(()=>{load();},[]);
+
+  function handleQR(imei){setShowQR(false);const found=inv.find(p=>p.imei===imei);if(found){setForm(p=>({...p,inv_id:found.id,modelo:found.marca+" "+found.modelo,imei:found.imei,precio:found.precio}));setShow(true);setToast({t:"ok",m:"✅ "+found.marca+" "+found.modelo});}else{setToast({t:"error",m:"IMEI no encontrado"});}}
+
+  async function submit(){
+    if(!form.modelo.trim()){setToast({t:"error",m:"El Modelo es obligatorio"});return;}
+    const precio=+form.precio;if(precio<=0){setToast({t:"error",m:"Ingresá un precio válido"});return;}
+    setSaving(true);
+    try{
+      const ef=+(form.efectivo||0),yp=+(form.yape||0),tr=+(form.transferencia||0);
+      const accTotal=Object.entries(accPrecios).reduce((a,[k,v])=>form.accesorios[k]?a+(+v||0):a,0);
+      const totalConAcc=precio+accTotal;
+      const paid=Math.min(ef+yp+tr,totalConAcc);
+      const ps=paid>=totalConAcc?"pagado":paid>0?"parcial":"pendiente";
+      const metodo=[ef>0?"Efectivo":"",yp>0?"Yape":"",tr>0?"Transferencia":""].filter(Boolean).join(" + ")||"Efectivo";
+      const accList=Object.keys(form.accesorios).filter(k=>form.accesorios[k]).map(k=>{const p=accPrecios[k]||0;return k+(p>0?" (S/."+p+")":"");}).join(", ");
+      const notasFinal=[form.notas,accList?"Accesorios: "+accList:""].filter(Boolean).join(" | ");
+      await api.post("ventas",{inventario_id:form.inv_id||null,imei:form.imei,modelo:form.modelo,tienda:form.tienda,cliente:form.cliente,precio_venta:totalConAcc,pagado:paid,estado_pago:ps,metodo_pago:metodo,pago_efectivo:ef,pago_yape:yp,pago_transferencia:tr,fecha:new Date().toISOString().substring(0,10),notas:notasFinal,empleado:user.nombre});
+      if(form.inv_id)await api.patch("inventario",form.inv_id,{estado:"vendido",fecha_venta:new Date().toISOString()});
+      setToast({t:"ok",m:"Venta registrada"});setForm(E);setAccPrecios({});setShow(false);load();
+    }catch(e){setToast({t:"error",m:"Error: "+e.message});}
+    setSaving(false);
+  }
+
+  async function markPaid(id,precio){await api.patch("ventas",id,{pagado:precio,estado_pago:"pagado"});load();}
+  async function anularVenta(s){
+    if(!confirm("¿Anular esta venta? El teléfono volverá al inventario."))return;
+    await api.patch("ventas",s.id,{estado_pago:"anulado"});
+    if(s.inventario_id)await api.patch("inventario",s.inventario_id,{estado:"disponible",fecha_venta:null});
+    setDetail(null);load();
+  }
+
+  const grupos={};sales.forEach(s=>{const t=s.tienda||"Sin tienda";if(!grupos[t])grupos[t]=[];grupos[t].push(s);});
+  const cobrado=sales.reduce((a,s)=>a+(s.pagado||0),0);
+  const pendiente=sales.filter(s=>s.estado_pago!=="pagado").reduce((a,s)=>a+((s.precio_venta||0)-(s.pagado||0)),0);
+
+  return <div style={{flex:1,overflowY:"auto",padding:16}}>
+    <Toast msg={toast} onClose={()=>setToast(null)}/>
+    {showQR&&<QRScanner onScan={handleQR} onClose={()=>setShowQR(false)}/>}
+    {detail&&<div style={{position:"fixed",inset:0,background:"rgba(0,0,0,0.8)",zIndex:999,display:"flex",alignItems:"flex-end"}} onClick={()=>setDetail(null)}>
+      <div style={{width:"100%",background:C.surface,borderRadius:"24px 24px 0 0",padding:24,maxHeight:"90vh",overflowY:"auto"}} onClick={e=>e.stopPropagation()}>
+        <div style={{display:"flex",justifyContent:"space-between",marginBottom:14}}>
+          <span style={{color:C.text,fontWeight:800,fontSize:18}}>{detail.modelo}</span>
+          <button onClick={()=>setDetail(null)} style={{background:"none",border:"none",color:C.muted,cursor:"pointer",fontSize:20}}>✕</button>
+        </div>
+        {[["👤 Cliente",detail.cliente||"Sin cliente"],["🏪 Tienda",detail.tienda||""],["👤 Vendedor",detail.empleado||""],["📅 Fecha",detail.fecha||""],["📱 IMEI",detail.imei||"—"]].map(([l,v])=><div key={l} style={{display:"flex",justifyContent:"space-between",padding:"8px 0",borderBottom:"1px solid "+C.border}}><span style={{color:C.muted,fontSize:14}}>{l}</span><span style={{color:C.text,fontWeight:600,fontSize:14}}>{v}</span></div>)}
+        <div style={{height:8}}/>
+        {[["💰 Total","S/."+(detail.precio_venta||0),C.blue],["✅ Cobrado","S/."+(detail.pagado||0),C.green],detail.precio_venta>detail.pagado&&["⏳ Pendiente","S/."+((detail.precio_venta||0)-(detail.pagado||0)),C.red]].filter(Boolean).map(([l,v,c])=><div key={l} style={{display:"flex",justifyContent:"space-between",padding:"8px 0",borderBottom:"1px solid "+C.border}}><span style={{color:C.muted,fontSize:14}}>{l}</span><span style={{color:c,fontWeight:700,fontSize:15}}>{v}</span></div>)}
+        {(detail.pago_efectivo>0||detail.pago_yape>0||detail.pago_transferencia>0)&&<div style={{marginTop:8}}>
+          {detail.pago_efectivo>0&&<div style={{display:"flex",justifyContent:"space-between",padding:"6px 0"}}><span style={{color:C.muted,fontSize:13}}>💵 Efectivo</span><span style={{color:C.green,fontWeight:600}}>S/.{detail.pago_efectivo}</span></div>}
+          {detail.pago_yape>0&&<div style={{display:"flex",justifyContent:"space-between",padding:"6px 0"}}><span style={{color:C.muted,fontSize:13}}>📱 Yape</span><span style={{color:C.purple,fontWeight:600}}>S/.{detail.pago_yape}</span></div>}
+          {detail.pago_transferencia>0&&<div style={{display:"flex",justifyContent:"space-between",padding:"6px 0"}}><span style={{color:C.muted,fontSize:13}}>🏦 Transferencia</span><span style={{color:C.blue,fontWeight:600}}>S/.{detail.pago_transferencia}</span></div>}
+        </div>}
+        {detail.notas&&<div style={{marginTop:8,padding:"10px 14px",background:C.amberDim,borderRadius:10,color:C.amber,fontSize:13}}>📝 {detail.notas}</div>}
+        {isAdmin&&<div style={{marginTop:16}}>
+          <div style={{color:C.muted,fontSize:11,fontWeight:700,letterSpacing:1,marginBottom:10}}>CORRECCIONES — SOLO ADMIN</div>
+          <div style={{display:"flex",gap:10}}>
+            {detail.estado_pago!=="pagado"&&<Btn onClick={async()=>{await markPaid(detail.id,detail.precio_venta);setDetail(null);}} variant="success" small style={{flex:1}}>✓ Marcar pagado</Btn>}
+            <Btn onClick={()=>anularVenta(detail)} variant="danger" small style={{flex:1}}>✕ Anular venta</Btn>
+          </div>
+        </div>}
+      </div>
+    </div>}
+    <div style={{display:"flex",alignItems:"flex-start",justifyContent:"space-between",marginBottom:12}}>
+      <div>
+        <h2 style={{fontSize:24,fontWeight:900}}>💰 Ventas</h2>
+        <div style={{display:"flex",gap:8,marginTop:4,flexWrap:"wrap"}}>
+          <span style={{background:C.greenDim,color:C.green,fontSize:12,fontWeight:700,padding:"3px 10px",borderRadius:99}}>✅ S/.{cobrado.toLocaleString()}</span>
+          {pendiente>0&&<span style={{background:C.redDim,color:C.red,fontSize:12,fontWeight:700,padding:"3px 10px",borderRadius:99}}>⏳ S/.{pendiente.toLocaleString()}</span>}
+        </div>
+      </div>
+      <div style={{display:"flex",gap:8}}>
+        <button onClick={()=>setShowQR(true)} style={{background:C.blueDim,border:"2px solid "+C.blue,borderRadius:12,padding:"10px 14px",cursor:"pointer",fontSize:18,color:C.blue}}>⬛</button>
+        <Btn onClick={()=>{setShow(!show);setForm(E);setAccPrecios({});}} small>{show?"✕":"+ Nueva"}</Btn>
+      </div>
+    </div>
+    {show&&<div style={{...KS,border:"2px solid "+C.green,marginBottom:16}} className="su">
+      <div style={{color:C.green,fontWeight:800,fontSize:17,marginBottom:14}}>💰 Nueva Venta</div>
+      <div style={{marginBottom:12}}>
+        <label style={LS}>Del inventario (opcional)</label>
+        <select style={{...IS,appearance:"none"}} value={form.inv_id} onChange={e=>{const ph=inv.find(p=>p.id===e.target.value);if(ph)setForm(p=>({...p,inv_id:e.target.value,modelo:ph.marca+" "+ph.modelo,imei:ph.imei||"",precio:ph.precio}));else ff("inv_id")("");}}>
+          <option value="">— Manual —</option>
+          {inv.map(p=><option key={p.id} value={p.id}>{p.marca} {p.modelo} {p.almacenamiento} — IMEI: {p.imei||"sin IMEI"}</option>)}
+        </select>
+      </div>
+      <div style={{display:"grid",gridTemplateColumns:"1fr 1fr",gap:12,marginBottom:12}}>
+        <Field label="Tienda" value={form.tienda} onChange={ff("tienda")} options={TIENDAS_EMP}/>
+        <Field label="Modelo ★" value={form.modelo} onChange={ff("modelo")} placeholder="iPhone 17 Pro"/>
+        <Field label="IMEI" value={form.imei} onChange={ff("imei")} placeholder="15 dígitos"/>
+        <Field label="Cliente" value={form.cliente} onChange={ff("cliente")} placeholder="Nombre"/>
+        <Field label="Precio (S/.) ★" value={form.precio} onChange={ff("precio")} type="number"/>
+      </div>
+      <div style={{background:"rgba(74,222,128,0.06)",border:"1px solid rgba(74,222,128,0.2)",borderRadius:12,padding:14,marginBottom:12}}>
+        <div style={{color:C.muted,fontSize:11,fontWeight:700,letterSpacing:1,marginBottom:10}}>FORMAS DE PAGO</div>
+        <div style={{display:"grid",gridTemplateColumns:"1fr 1fr 1fr",gap:10}}>
+          <div><label style={{...LS,color:C.green}}>💵 Efectivo</label><input style={IS} type="number" value={form.efectivo} placeholder="S/." onChange={e=>ff("efectivo")(e.target.value)}/></div>
+          <div><label style={{...LS,color:C.purple}}>📱 Yape</label><input style={IS} type="number" value={form.yape} placeholder="S/." onChange={e=>ff("yape")(e.target.value)}/></div>
+          <div><label style={{...LS,color:C.blue}}>🏦 Transf.</label><input style={IS} type="number" value={form.transferencia} placeholder="S/." onChange={e=>ff("transferencia")(e.target.value)}/></div>
+        </div>
+        <div style={{marginTop:10,padding:"8px 12px",background:"rgba(74,222,128,0.1)",borderRadius:8,display:"flex",justifyContent:"space-between"}}>
+          <span style={{color:C.muted,fontSize:13}}>Total recibido:</span>
+          <span style={{color:C.green,fontWeight:800}}>S/. {(Number(form.efectivo||0) + Number(form.yape||0) + Number(form.transferencia||0)).toFixed(0)}</span>
+        </div>
+      </div>
+      <div style={{marginBottom:12}}>
+        <div style={{color:C.muted,fontSize:11,fontWeight:700,letterSpacing:1,marginBottom:10}}>ACCESORIOS</div>
+        <div style={{display:"flex",flexDirection:"column",gap:8}}>
+          {ACCS.map(acc=><div key={acc} style={{display:"flex",alignItems:"center",gap:10}}>
+            <input type="checkbox" checked={!!form.accesorios[acc]} onChange={e=>setForm(p=>({...p,accesorios:{...p.accesorios,[acc]:e.target.checked}}))} style={{width:18,height:18,cursor:"pointer"}}/>
+            <span style={{color:form.accesorios[acc]?C.text:C.muted,fontSize:15,flex:1}}>{acc}</span>
+            {form.accesorios[acc]&&<input style={{...IS,width:90,padding:"8px 10px",fontSize:14}} type="number" placeholder="S/." value={accPrecios[acc]||""} onChange={e=>setAccPrecios(p=>({...p,[acc]:e.target.value}))}/>}
+          </div>)}
+        </div>
+      </div>
+      <Field label="Notas" value={form.notas} onChange={ff("notas")} placeholder="Notas..."/>
+      <div style={{display:"flex",gap:10,marginTop:14}}>
+        <Btn onClick={submit} full disabled={saving} variant="success">{saving?"⏳ Guardando...":"✓ Registrar venta"}</Btn>
+        <Btn onClick={()=>{setShow(false);setForm(E);setAccPrecios({});}} variant="ghost">✕</Btn>
+      </div>
+    </div>}
+    <div style={{marginBottom:12}}><button onClick={load} style={{background:C.card,border:"1px solid "+C.border,borderRadius:10,padding:"8px 14px",color:C.muted,cursor:"pointer",fontSize:13}}>🔄 Actualizar</button></div>
+    {loading?<Spin/>:sales.length===0?<div style={{textAlign:"center",color:C.muted,padding:40}}>Sin ventas</div>:Object.keys(grupos).sort().map(tienda=>{
+      const vs=grupos[tienda];
+      const tot=vs.reduce((a,s)=>a+(s.precio_venta||0),0);
+      const cob=vs.reduce((a,s)=>a+(s.pagado||0),0);
+      return <div key={tienda} style={{marginBottom:18}}>
+        <div style={{background:C.blueDim,border:"1px solid rgba(56,189,248,0.2)",borderRadius:12,padding:"12px 14px",marginBottom:10}}>
+          <div style={{fontWeight:800,color:C.blue,fontSize:16,marginBottom:4}}>🏪 {tienda}</div>
+          <div style={{display:"flex",gap:12}}>
+            <span style={{color:C.green,fontSize:13,fontWeight:700}}>✅ S/.{cob.toLocaleString()}</span>
+            {tot>cob&&<span style={{color:C.red,fontSize:13,fontWeight:700}}>⏳ S/.{(tot-cob).toLocaleString()}</span>}
+          </div>
+        </div>
+        {vs.map(s=>{
+          const precio=s.precio_venta||0; const pagado=s.pagado||0; const estado=s.estado_pago||"";
+          const color=estado==="pagado"?C.green:estado==="parcial"?C.amber:C.red;
+          return <div key={s.id} onClick={()=>setDetail(s)} style={{...KS,cursor:"pointer",borderLeft:"4px solid "+color,marginBottom:10,opacity:estado==="pagado"?0.7:1}}>
+            <div style={{display:"flex",justifyContent:"space-between",marginBottom:6}}>
+              <span style={{fontWeight:700,fontSize:16}}>{s.modelo}</span>
+              <div style={{display:"flex",gap:6,alignItems:"center"}}><span style={badge(estado)}>{estado}</span><span style={{color:C.muted,fontSize:16}}>›</span></div>
+            </div>
+            <div style={{color:C.muted,fontSize:13,marginBottom:8}}>{s.fecha} · {s.cliente||"Sin cliente"} · {s.empleado}</div>
+            {(s.notas||"").includes("Accesorios:")&&<div style={{color:C.amber,fontSize:12,marginBottom:8}}>{s.notas.split("Accesorios:")[1].trim()}</div>}
+            <div style={{display:"flex",justifyContent:"space-between"}}>
+              <span style={{color:C.green,fontWeight:900,fontSize:18}}>S/.{precio.toLocaleString()}</span>
+              {pagado<precio&&<span style={{color:C.red,fontSize:13,fontWeight:600}}>Debe: S/.{(precio-pagado).toLocaleString()}</span>}
+            </div>
+          </div>;
+        })}
+      </div>;
+    })}
+  </div>;
+}
+
+// ─── DEUDORES ──────────────────────────────────────────────────────────────
+function Deudores({user}){
+  const [entregas,setEntregas]=useState([]); const [dist,setDist]=useState([]);
+  const [loading,setLoading]=useState(true); const [toast,setToast]=useState(null);
+  const [search,setSearch]=useState(""); const [expandido,setExpandido]=useState({}); const [abonos,setAbonos]=useState({});
+  const today=new Date().toISOString().substring(0,10);
+  async function load(){setLoading(true);try{const [e,d]=await Promise.all([api.get("entregas","?estado_pago=neq.pagado&estado_pago=neq.devuelto&order=fecha_entrega.asc"),api.get("revendedores","?order=nombre.asc")]);setEntregas(e);setDist(d);}catch(e){setToast({t:"error",m:"Error"});}setLoading(false);}
+  useEffect(()=>{load();},[]);
+  async function abonar(distId,monto){
+    const pend=[...entregas.filter(e=>e.revendedor_id===distId)].sort((a,b)=>a.fecha_entrega.localeCompare(b.fecha_entrega));
+    let rest=+monto;
+    for(const e of pend){if(rest<=0)break;const f=e.precio-e.pagado;const ab=Math.min(f,rest);const nv=e.pagado+ab;rest-=ab;await api.patch("entregas",e.id,{pagado:nv,estado_pago:nv>=e.precio?"pagado":"parcial"});}
+    setToast({t:"ok",m:"Pago registrado"});load();
+  }
+  async function pagarTodo(distId,pend){for(const e of pend)await api.patch("entregas",e.id,{pagado:e.precio,estado_pago:"pagado"});setToast({t:"ok",m:"Todo pagado"});load();}
+  function openWA(phone,msg){const clean=phone.replace(/[^0-9]/g,"");let num=clean;if(!num.startsWith("51"))num="51"+num;window.open("https://wa.me/"+num+"?text="+encodeURIComponent(msg));}
+
+  const grupos=dist.map(d=>{
+    const pend=entregas.filter(e=>e.revendedor_id===d.id);
+    if(!pend.length)return null;
+    const debe=pend.reduce((a,e)=>a+(e.precio-e.pagado),0);
+    const total=pend.reduce((a,e)=>a+e.precio,0);
+    const pagado=pend.reduce((a,e)=>a+e.pagado,0);
+    const venc=pend.filter(e=>e.fecha_pago_esperado<today).length;
+    return{dist:d,pend,debe,total,pagado,venc};
+  }).filter(Boolean).filter(g=>!search||g.dist.nombre.toLowerCase().includes(search.toLowerCase()));
+  const totalGlobal=grupos.reduce((a,g)=>a+g.debe,0);
+
+  return <div style={{flex:1,overflowY:"auto",padding:16}}>
+    <Toast msg={toast} onClose={()=>setToast(null)}/>
+    <div style={{display:"flex",alignItems:"center",justifyContent:"space-between",marginBottom:10}}>
+      <h2 style={{fontSize:24,fontWeight:900}}>🔴 Deudores</h2>
+      <button onClick={load} style={{background:C.card,border:"1px solid "+C.border,borderRadius:10,padding:"8px 14px",color:C.muted,cursor:"pointer"}}>🔄</button>
+    </div>
+    <div style={{background:C.redDim,color:C.red,fontSize:14,fontWeight:700,padding:"6px 14px",borderRadius:99,display:"inline-block",marginBottom:14}}>Total: S/.{totalGlobal.toLocaleString()}</div>
+    <input style={{...IS,marginBottom:14}} placeholder="🔍 Buscar distribuidor..." value={search} onChange={e=>setSearch(e.target.value)}/>
+    {loading?<Spin/>:grupos.length===0?<div style={{...KS,textAlign:"center",padding:40}}><div style={{fontSize:44,marginBottom:10}}>✅</div><div style={{color:C.green,fontWeight:800,fontSize:18}}>¡Todo cobrado!</div></div>:
+    grupos.map(({dist:d,pend,debe,total,pagado,venc})=>{
+      const isExp=expandido[d.id];
+      const phone=(d.telefono||"");
+      const msgs=pend.map(e=>"📱 "+(e.marca||"")+" "+e.modelo+" → S/."+((e.precio-e.pagado).toFixed(0))).join("\n");
+      const waMsg="Hola "+d.nombre+"! Resumen de deuda:\n\n"+msgs+"\n\n💰 Total: S/."+total.toFixed(0)+"\n✅ Pagado: S/."+pagado.toFixed(0)+"\n🔴 DEBE: S/."+debe.toFixed(0)+"\n\nPor favor coordinar pago. Gracias!";
+      return <div key={d.id} style={{...KS,borderLeft:"4px solid "+(venc>0?C.red:C.amber),marginBottom:16}}>
+        <div style={{display:"flex",justifyContent:"space-between",marginBottom:10}}>
+          <div><div style={{fontWeight:900,fontSize:18}}>{d.nombre}</div><div style={{color:C.muted,fontSize:13}}>👤 {d.contacto||"—"} · 📱 {d.telefono||"Sin número"}</div>{venc>0&&<span style={{background:C.redDim,color:C.red,padding:"3px 10px",borderRadius:99,fontSize:12,fontWeight:700,marginTop:4,display:"inline-block"}}>⚠️ {venc} vencida{venc>1?"s":""}</span>}</div>
+          <div style={{textAlign:"right"}}><div style={{color:C.red,fontWeight:900,fontSize:24}}>S/.{debe.toLocaleString()}</div><div style={{color:C.muted,fontSize:12}}>de S/.{total.toLocaleString()}</div></div>
+        </div>
+        <div style={{background:C.amberDim,border:"1px solid rgba(251,191,36,0.2)",borderRadius:12,padding:14,marginBottom:12}}>
+          <div style={{color:C.amber,fontWeight:700,fontSize:14,marginBottom:10}}>💵 Registrar pago</div>
+          <div style={{display:"flex",gap:8,marginBottom:8}}>
+            <input style={{...IS,flex:1}} type="number" placeholder="Monto (S/.)" value={abonos[d.id]||""} onChange={e=>setAbonos(p=>({...p,[d.id]:e.target.value}))}/>
+            <Btn onClick={()=>{if(abonos[d.id]&&+abonos[d.id]>0){abonar(d.id,abonos[d.id]);setAbonos(p=>({...p,[d.id]:""}))}else setToast({t:"error",m:"Ingresá el monto"});}} variant="amber" small>Abonar</Btn>
+          </div>
+          <div style={{display:"flex",gap:8}}>
+            <Btn onClick={()=>{if(confirm("¿Marcar todo de "+d.nombre+" como pagado?"))pagarTodo(d.id,pend);}} variant="success" small style={{flex:1}}>✓ Todo pagado</Btn>
+            {phone&&<Btn onClick={()=>openWA(phone,waMsg)} variant="wa" small style={{flex:1}}>💬 WhatsApp</Btn>}
+          </div>
+        </div>
+        <button onClick={()=>setExpandido(p=>({...p,[d.id]:!p[d.id]}))} style={{width:"100%",background:"rgba(255,255,255,0.04)",border:"1px solid "+C.border,borderRadius:10,padding:10,color:C.muted,cursor:"pointer",fontSize:13}}>
+          {isExp?"▲ Ocultar entregas":"▼ Ver "+pend.length+" entregas"}
+        </button>
+        {isExp&&<div style={{marginTop:10}}>
+          {pend.map(e=><div key={e.id} style={{background:"rgba(255,255,255,0.04)",borderRadius:10,padding:12,marginBottom:6}}>
+            <div style={{display:"flex",justifyContent:"space-between"}}><span style={{fontWeight:600,fontSize:15}}>{e.marca} {e.modelo}</span><span style={{color:C.red,fontWeight:800}}>S/.{(e.precio-e.pagado).toLocaleString()}</span></div>
+            <div style={{color:C.muted,fontSize:12}}>{e.fecha_entrega} · {e.empleado_nombre}</div>
+            {e.fecha_pago_esperado<today&&<div style={{color:C.red,fontSize:12,fontWeight:700}}>⚠️ VENCIDO</div>}
+          </div>)}
+        </div>}
+      </div>;
+    })}
+  </div>;
+}
+
+// ─── DISTRIBUIDORES ─────────────────────────────────────────────────────────
+function Distribuidores(){
+  const [list,setList]=useState([]); const [loading,setLoading]=useState(true); const [show,setShow]=useState(false); const [toast,setToast]=useState(null);
+  const [form,setForm]=useState({nombre:"",contacto:"",telefono:"",condicion_pago:"Al día siguiente"});
+  async function load(){setLoading(true);try{setList(await api.get("revendedores","?order=nombre.asc"));}catch(e){}setLoading(false);}
+  useEffect(()=>{load();},[]);
+  async function add(){if(!form.nombre.trim()){setToast({t:"error",m:"Ingresá el nombre"});return;}try{await api.post("revendedores",form);setForm({nombre:"",contacto:"",telefono:"",condicion_pago:"Al día siguiente"});setShow(false);setToast({t:"ok",m:"Distribuidor agregado"});load();}catch(e){setToast({t:"error",m:"Error"});}}
+  async function remove(id){if(!confirm("¿Eliminar?"))return;await api.del("revendedores",id);load();}
+  return <div style={{flex:1,overflowY:"auto",padding:16}}>
+    <Toast msg={toast} onClose={()=>setToast(null)}/>
+    <div style={{display:"flex",alignItems:"center",justifyContent:"space-between",marginBottom:16}}>
+      <h2 style={{fontSize:24,fontWeight:900}}>🏪 Distribuidores</h2>
+      <Btn onClick={()=>setShow(!show)} small>{show?"✕":"+ Agregar"}</Btn>
+    </div>
+    {show&&<div style={{...KS,border:"2px solid "+C.blue,marginBottom:16}} className="su">
+      <div style={{color:C.blue,fontWeight:800,fontSize:17,marginBottom:14}}>Nuevo distribuidor</div>
+      <div style={{display:"flex",flexDirection:"column",gap:12}}>
+        <Field label="Nombre ★" value={form.nombre} onChange={v=>setForm(p=>({...p,nombre:v}))} placeholder="Móvil Express"/>
+        <Field label="Contacto" value={form.contacto} onChange={v=>setForm(p=>({...p,contacto:v}))} placeholder="Marco"/>
+        <Field label="Teléfono / WhatsApp ★" value={form.telefono} onChange={v=>setForm(p=>({...p,telefono:v}))} placeholder="999888777"/>
+        <Field label="Condición de pago" value={form.condicion_pago} onChange={v=>setForm(p=>({...p,condicion_pago:v}))} options={["En el momento","En la noche","Al día siguiente","A los 2 días"]}/>
+      </div>
+      <div style={{display:"flex",gap:10,marginTop:14}}>
+        <Btn onClick={add} full>Guardar</Btn>
+        <Btn onClick={()=>setShow(false)} variant="ghost">✕</Btn>
+      </div>
+    </div>}
+    {loading?<Spin/>:list.length===0?<div style={{textAlign:"center",color:C.muted,padding:40}}>Sin distribuidores</div>:list.map(r=><div key={r.id} style={{...KS,borderLeft:"4px solid "+C.blue,position:"relative"}}>
+      <div style={{fontWeight:900,fontSize:17,marginBottom:6}}>{r.nombre}</div>
+      <div style={{color:C.muted,fontSize:14}}>👤 {r.contacto||"—"}</div>
+      <div style={{color:C.muted,fontSize:14}}>📱 {r.telefono||"—"}</div>
+      <div style={{color:C.muted,fontSize:14}}>💳 {r.condicion_pago}</div>
+      <button onClick={()=>remove(r.id)} style={{position:"absolute",top:14,right:14,background:C.redDim,border:"1px solid rgba(248,113,113,0.3)",borderRadius:8,padding:"6px 12px",color:C.red,cursor:"pointer",fontSize:13}}>✕</button>
+    </div>)}
+  </div>;
+}
+
+// ─── DASHBOARD ──────────────────────────────────────────────────────────────
+function Dashboard({user}){
+  const [inv,setInv]=useState([]); const [sales,setSales]=useState([]); const [del,setDel]=useState([]); const [loading,setLoading]=useState(true);
+  async function load(){setLoading(true);try{const [i,s,d]=await Promise.all([api.get("inventario",""),api.get("ventas",""),api.get("entregas","?estado_pago=neq.pagado")]);setInv(i);setSales(s);setDel(d);}catch(e){}setLoading(false);}
+  useEffect(()=>{load();},[]);
+  const cobV=sales.reduce((a,s)=>a+(s.pagado||0),0);
+  const pendV=sales.filter(s=>s.estado_pago!=="pagado").reduce((a,s)=>a+((s.precio_venta||0)-(s.pagado||0)),0);
+  const pendE=del.reduce((a,d)=>a+((d.precio||0)-(d.pagado||0)),0);
+  const porDist={};del.forEach(d=>{const k=d.revendedor_nombre||"Sin dist.";if(!porDist[k])porDist[k]={total:0,count:0};porDist[k].total+=(d.precio-d.pagado);porDist[k].count++;});
+  return <div style={{flex:1,overflowY:"auto",padding:16}}>
+    <div style={{display:"flex",alignItems:"center",justifyContent:"space-between",marginBottom:16}}>
+      <h2 style={{fontSize:24,fontWeight:900}}>📊 Dashboard</h2>
+      <button onClick={load} style={{background:C.card,border:"1px solid "+C.border,borderRadius:10,padding:"8px 14px",color:C.muted,cursor:"pointer"}}>🔄</button>
+    </div>
+    {loading?<Spin/>:<>
+      <div style={{display:"grid",gridTemplateColumns:"1fr 1fr",gap:10,marginBottom:14}}>
+        {[["📦","Disponible",inv.filter(p=>p.estado==="disponible").length,C.blue],["💰","Cobrado","S/."+cobV.toLocaleString(),C.green],["🔴","Deuda dist.","S/."+pendE.toLocaleString(),pendE>0?C.red:C.green],["⚠️","Pend. ventas","S/."+pendV.toLocaleString(),pendV>0?C.amber:C.green]].map(([ic,l,v,c])=><div key={l} style={{background:c+"22",border:"1px solid "+c+"44",borderRadius:16,padding:"16px 14px",textAlign:"center"}}><div style={{fontSize:24,marginBottom:4}}>{ic}</div><div style={{fontSize:22,fontWeight:900,color:c}}>{v}</div><div style={{color:c,fontSize:13,fontWeight:600,marginTop:2}}>{l}</div></div>)}
+      </div>
+      <div style={KS}>
+        <div style={{color:C.muted,fontSize:11,fontWeight:700,textTransform:"uppercase",letterSpacing:1,marginBottom:12}}>Stock por local</div>
+        {TIENDAS.map(t=><div key={t} style={{display:"flex",justifyContent:"space-between",padding:"10px 0",borderBottom:"1px solid "+C.border}}>
+          <span style={{fontWeight:600,fontSize:15}}>{t}</span>
+          <div style={{display:"flex",gap:12}}><span style={{color:C.green,fontSize:14,fontWeight:700}}>{inv.filter(p=>p.ubicacion===t&&p.estado==="disponible").length} disp.</span><span style={{color:C.muted,fontSize:14}}>{inv.filter(p=>p.ubicacion===t).length} total</span></div>
+        </div>)}
+      </div>
+      {Object.keys(porDist).length>0&&<div style={KS}>
+        <div style={{color:C.muted,fontSize:11,fontWeight:700,textTransform:"uppercase",letterSpacing:1,marginBottom:12}}>Deuda por distribuidor</div>
+        {Object.entries(porDist).sort((a,b)=>b[1].total-a[1].total).map(([nombre,info])=><div key={nombre} style={{display:"flex",justifyContent:"space-between",padding:"10px 0",borderBottom:"1px solid "+C.border}}>
+          <div><div style={{fontWeight:700,fontSize:15}}>{nombre}</div><div style={{color:C.muted,fontSize:12}}>{info.count} entrega{info.count>1?"s":""}</div></div>
+          <span style={{color:C.red,fontWeight:900,fontSize:18}}>S/.{info.total.toLocaleString()}</span>
+        </div>)}
+      </div>}
+    </>}
+  </div>;
+}
+
+// ─── CIERRE DE CAJA ─────────────────────────────────────────────────────────
+function CierreCaja({user}){
+  const [ventas,setVentas]=useState([]); const [entregas,setEntregas]=useState([]); const [loading,setLoading]=useState(true);
+  const [fecha,setFecha]=useState(new Date().toISOString().substring(0,10)); const [cerrando,setCerrando]=useState({});
+  const isAdmin=user.rol==="admin"; const esA6=(user.tienda||"")==="NM A6";
+  const tiendas=isAdmin?TIENDAS_EMP:[user.tienda||"NM 3"];
+  async function load(){setLoading(true);try{const [v,e]=await Promise.all([api.get("ventas","?order=created_at.desc"),api.get("entregas","?order=created_at.desc")]);setVentas(v);setEntregas(e);}catch(e){}setLoading(false);}
+  useEffect(()=>{load();},[]);
+  function ventasDia(tienda){return ventas.filter(v=>(v.fecha||"").substring(0,10)===fecha&&v.tienda===tienda);}
+  function pagosDist(){return entregas.filter(e=>(e.fecha_entrega||"").substring(0,10)===fecha&&(e.estado_pago==="pagado"||e.estado_pago==="parcial"));}
+  async function cerrar(tienda){
+    if(!confirm("¿Cerrar caja de "+tienda+" del "+fecha+"?"))return;
+    setCerrando(p=>({...p,[tienda]:true}));
+    const vs=ventasDia(tienda);const tot=vs.reduce((a,v)=>a+(v.precio_venta||0),0);const cob=vs.reduce((a,v)=>a+(v.pagado||0),0);
+    try{await api.post("auditoria",{usuario:user.nombre,accion:"CIERRE DE CAJA - "+tienda,tabla:"ventas",detalle:"Fecha: "+fecha+" | Tienda: "+tienda+" | Total: S/."+tot+" | Cobrado: S/."+cob+" | Ventas: "+vs.length});}catch(e){}
+    setCerrando(p=>({...p,[tienda]:false}));
+    alert("✅ Caja "+tienda+" cerrada correctamente para el "+fecha);
+  }
+  function CajaCard({tienda}){
+    const vs=ventasDia(tienda);
+    const total=vs.reduce((a,v)=>a+(v.precio_venta||0),0);
+    const ef=vs.reduce((a,v)=>a+(v.pago_efectivo||0),0);
+    const yp=vs.reduce((a,v)=>a+(v.pago_yape||0),0);
+    const tr=vs.reduce((a,v)=>a+(v.pago_transferencia||0),0);
+    const cobrado=ef+yp+tr;
+    const pendiente=total-cobrado;
+    return <div style={{...KS,border:"1px solid rgba(56,189,248,0.2)",marginBottom:16}}>
+      <div style={{background:C.blueDim,borderRadius:10,padding:"10px 14px",marginBottom:14,display:"flex",justifyContent:"space-between",alignItems:"center"}}>
+        <span style={{color:C.blue,fontWeight:800,fontSize:16}}>🏪 {tienda}</span>
+        <span style={{color:C.muted,fontSize:13}}>{vs.length} venta{vs.length!==1?"s":""}</span>
+      </div>
+      {vs.length===0?<div style={{color:C.muted,textAlign:"center",padding:16}}>Sin ventas este día</div>:<>
+        <div style={{display:"flex",justifyContent:"space-between",padding:"8px 0",borderBottom:"1px solid "+C.border}}><span style={{color:C.muted,fontSize:14}}>📦 Total vendido</span><span style={{color:C.blue,fontWeight:700,fontSize:15}}>S/.{total.toLocaleString()}</span></div>
+        <div style={{display:"flex",justifyContent:"space-between",padding:"8px 0",borderBottom:"1px solid "+C.border}}><span style={{color:C.muted,fontSize:14}}>✅ Total cobrado</span><span style={{color:C.green,fontWeight:700,fontSize:15}}>S/.{cobrado.toLocaleString()}</span></div>
+        {pendiente>0&&<div style={{display:"flex",justifyContent:"space-between",padding:"8px 0",borderBottom:"1px solid "+C.border}}><span style={{color:C.muted,fontSize:14}}>⏳ Pendiente</span><span style={{color:C.red,fontWeight:700,fontSize:15}}>S/.{pendiente.toLocaleString()}</span></div>}
+        <div style={{margin:"14px 0 10px",color:C.muted,fontSize:11,fontWeight:700,letterSpacing:1}}>COBROS RECIBIDOS</div>
+        {[["💵 Efectivo",ef,C.green],["📱 Yape",yp,C.purple],["🏦 Transferencia",tr,C.blue]].map(([l,v,c])=><div key={l} style={{background:c+"22",border:"1px solid "+c+"44",borderRadius:10,padding:"10px 14px",marginBottom:8,display:"flex",justifyContent:"space-between"}}><span style={{color:c,fontWeight:600,fontSize:14}}>{l}</span><span style={{color:c,fontWeight:900,fontSize:16}}>S/.{v.toLocaleString()}</span></div>)}
+        <div style={{marginTop:4,color:C.muted,fontSize:11,fontWeight:700,letterSpacing:1,marginBottom:8}}>DETALLE DE VENTAS</div>
+        {vs.map((v,i)=><div key={i} style={{display:"flex",justifyContent:"space-between",padding:"6px 0",borderBottom:"1px solid "+C.border}}>
+          <div><div style={{fontWeight:600,fontSize:14}}>{v.modelo}</div><div style={{color:C.muted,fontSize:12}}>{v.empleado} · {v.metodo_pago}</div></div>
+          <span style={{color:C.green,fontWeight:700}}>S/.{(v.precio_venta||0).toLocaleString()}</span>
+        </div>)}
+        <div style={{marginTop:14}}><Btn onClick={()=>cerrar(tienda)} full disabled={cerrando[tienda]}>{cerrando[tienda]?"⏳ Cerrando...":"🔒 Cerrar caja del día"}</Btn></div>
+      </>}
+    </div>;
+  }
+  return <div style={{flex:1,overflowY:"auto",padding:16}}>
+    <div style={{display:"flex",alignItems:"center",justifyContent:"space-between",marginBottom:16}}>
+      <h2 style={{fontSize:24,fontWeight:900}}>📋 Cierre de Caja</h2>
+      <button onClick={load} style={{background:C.card,border:"1px solid "+C.border,borderRadius:10,padding:"8px 14px",color:C.muted,cursor:"pointer"}}>🔄</button>
+    </div>
+    <div style={{...KS,marginBottom:16}}>
+      <label style={LS}>Fecha</label>
+      <input style={IS} type="date" value={fecha} max={new Date().toISOString().substring(0,10)} onChange={e=>setFecha(e.target.value)}/>
+    </div>
+    {loading?<Spin/>:<>
+      {tiendas.map(t=><CajaCard key={t} tienda={t}/>)}
+      {(isAdmin||esA6)&&<div style={{...KS,border:"1px solid rgba(251,191,36,0.3)",marginBottom:16}}>
+        <div style={{background:C.amberDim,borderRadius:10,padding:"10px 14px",marginBottom:14,display:"flex",justifyContent:"space-between"}}>
+          <span style={{color:C.amber,fontWeight:800,fontSize:16}}>🚚 NM A6 — Pagos distribuidores</span>
+          <span style={{color:C.muted,fontSize:13}}>{pagosDist().length}</span>
+        </div>
+        {pagosDist().length===0?<div style={{color:C.muted,textAlign:"center",padding:16}}>Sin pagos de distribuidores hoy</div>:
+        <><div style={{display:"flex",justifyContent:"space-between",padding:"8px 0",borderBottom:"1px solid "+C.border}}><span style={{color:C.muted}}>💰 Total cobrado</span><span style={{color:C.amber,fontWeight:700}}>S/.{pagosDist().reduce((a,e)=>a+(e.pagado||0),0).toLocaleString()}</span></div>
+        {pagosDist().map((e,i)=><div key={i} style={{display:"flex",justifyContent:"space-between",padding:"6px 0",borderBottom:"1px solid "+C.border}}>
+          <div><div style={{fontWeight:600,fontSize:14}}>{e.revendedor_nombre}</div><div style={{color:C.muted,fontSize:12}}>{e.marca} {e.modelo}</div></div>
+          <span style={{color:C.amber,fontWeight:700}}>S/.{(e.pagado||0).toLocaleString()}</span>
+        </div>)}</>}
+      </div>}
+    </>}
+  </div>;
+}
+
+// ─── APP ────────────────────────────────────────────────────────────────────
+function App(){
+  const [user,setUser]=useState(null); const [tab,setTab]=useState("dashboard");
+  if(!user)return <div style={{display:"flex",flexDirection:"column",height:"100vh"}}><Login onLogin={u=>{setUser(u);setTab(u.rol==="admin"?"dashboard":"inventario");}}/></div>;
+  const isAdmin=user.rol==="admin";
+  const allTabs=[
+    {id:"dashboard",label:"Inicio",icon:"📊",roles:["admin"]},
+    {id:"inventario",label:"Inventario",icon:"📦",roles:["admin","almacen","tienda","empleado"]},
+    {id:"entregas",label:"Entregas",icon:"🚚",roles:["admin","almacen","empleado"]},
+    {id:"ventas",label:"Ventas",icon:"💰",roles:["admin","tienda","empleado"]},
+    {id:"deudores",label:"Deudores",icon:"🔴",roles:["admin"]},
+    {id:"distribuidores",label:"Distrib.",icon:"🏪",roles:["admin"]},
+    {id:"caja",label:"Caja",icon:"📋",roles:["admin","empleado","tienda"]},
+  ];
+  const tabs=allTabs.filter(t=>t.roles.includes(user.rol));
+  return <div style={{display:"flex",flexDirection:"column",height:"100vh"}}>
+    <div style={{background:"#0d1424",padding:"12px 16px",display:"flex",alignItems:"center",justifyContent:"space-between",borderBottom:"1px solid rgba(99,179,237,0.15)",flexShrink:0,paddingTop:"max(12px,env(safe-area-inset-top))"}}>
+      <div style={{display:"flex",alignItems:"center",gap:8}}>
+        <span style={{fontSize:18}}>📱</span>
+        <span style={{fontWeight:900,fontSize:18,color:"#fff"}}>IMPORT</span>
+        <span style={{fontWeight:900,fontSize:18,color:C.blue}}>CELLS</span>
+        <span style={{background:"rgba(74,222,128,0.2)",color:C.green,fontSize:10,fontWeight:700,padding:"2px 8px",borderRadius:99}}>🟢 LIVE</span>
+      </div>
+      <div style={{display:"flex",alignItems:"center",gap:8}}>
+        {user.tienda&&<span style={{color:C.muted,fontSize:12}}>{user.tienda}</span>}
+        <span style={{color:C.muted,fontSize:13}}>{user.nombre}</span>
+        <button onClick={()=>setUser(null)} style={{background:C.redDim,border:"1px solid rgba(248,113,113,0.3)",borderRadius:8,padding:"6px 12px",color:C.red,cursor:"pointer",fontSize:13,fontWeight:700}}>Salir</button>
+      </div>
+    </div>
+    <div style={{flex:1,overflow:"hidden",display:"flex",flexDirection:"column"}}>
+      {tab==="dashboard"&&<Dashboard user={user}/>}
+      {tab==="inventario"&&<Inventario user={user}/>}
+      {tab==="entregas"&&<Entregas user={user}/>}
+      {tab==="ventas"&&<Ventas user={user}/>}
+      {tab==="deudores"&&<Deudores user={user}/>}
+      {tab==="distribuidores"&&<Distribuidores/>}
+      {tab==="caja"&&<CierreCaja user={user}/>}
+    </div>
+    <div style={{background:"#0d1424",borderTop:"1px solid rgba(99,179,237,0.15)",display:"flex",flexShrink:0,paddingBottom:"max(14px,env(safe-area-inset-bottom))"}}>
+      {tabs.map(t=><button key={t.id} onClick={()=>setTab(t.id)} style={{flex:1,display:"flex",flexDirection:"column",alignItems:"center",justifyContent:"center",padding:"12px 4px 8px",background:"none",border:"none",cursor:"pointer",gap:4,minHeight:72,position:"relative"}}>
+        {tab===t.id&&<div style={{position:"absolute",top:0,left:"20%",right:"20%",height:3,borderRadius:"0 0 4px 4px",background:C.blue}}/>}
+        <span style={{fontSize:tab===t.id?32:26,lineHeight:1}}>{t.icon}</span>
+        <span style={{fontSize:11,color:tab===t.id?C.blue:C.muted,fontWeight:tab===t.id?800:500}}>{t.label}</span>
+      </button>)}
+    </div>
+  </div>;
+}
+ReactDOM.createRoot(document.getElementById("root")).render(<App/>);
+</script>
+<script>if('serviceWorker' in navigator){window.addEventListener('load',function(){navigator.serviceWorker.register('/sw.js').catch(function(){});});}</script>
+</body>
+</html>
