@@ -23,6 +23,15 @@ input,select,button,textarea{font-family:inherit;}
 .su{animation:slideUp 0.2s ease;}
 ::-webkit-scrollbar{width:0;}
 input[type=number]::-webkit-outer-spin-button,input[type=number]::-webkit-inner-spin-button{-webkit-appearance:none;}
+@media (min-width:900px){
+  html,body{overflow:auto;}
+  .app-header{order:0;}
+  .app-nav{order:1;border-top:none !important;border-bottom:1px solid rgba(99,179,237,0.15);flex-direction:row;justify-content:center;padding-bottom:10px !important;padding-top:6px;gap:4px;}
+  .app-content{order:2;max-width:1200px;margin:0 auto;width:100%;}
+  .app-nav-btn{flex:none !important;flex-direction:row !important;min-height:auto !important;padding:10px 20px !important;gap:8px !important;}
+  .app-nav-btn .nav-icon{font-size:19px !important;}
+  .app-nav-underline{display:none !important;}
+}
 </style>
 </head>
 <body>
@@ -183,6 +192,8 @@ function Inventario({user}){
   const [show,setShow]=useState(false); const [saving,setSaving]=useState(false); const [toast,setToast]=useState(null);
   const [search,setSearch]=useState(""); const [fs,setFs]=useState("todos"); const [showQR,setShowQR]=useState(false);
   const [editItem,setEditItem]=useState(null);
+  const [expanded,setExpanded]=useState({});
+  const toggleGroup=k=>setExpanded(p=>({...p,[k]:!p[k]}));
   const isAdmin=user.rol==="admin"; const canEdit=user.rol==="admin"||user.rol==="almacen";
   const E={imei:"",marca:"",modelo:"",color:"",almacenamiento:"",ram:"",precio:"",precio_mayorista:"",costo:"",ubicacion:user.tienda||"Almacén Central",tipo:"libre",notas:""};
   const [form,setForm]=useState(E); const ff=k=>v=>setForm(p=>({...p,[k]:v}));
@@ -327,11 +338,23 @@ function Inventario({user}){
     {loading?<Spin/>:filtered.length===0?<div style={{textAlign:"center",color:C.muted,padding:40}}>Sin teléfonos</div>:<div>
       {disponibles.length>0&&<div>
         <SectionHeader icon="📦" label="Disponibles" count={disponibles.length} color={C.blue} bg={C.blueDim}/>
-        {Object.keys(gDisp).sort().map(k=><div key={k}><div style={{background:"#1e293b",borderRadius:10,padding:"8px 14px",marginBottom:6,display:"flex",justifyContent:"space-between"}}><span style={{color:C.text,fontWeight:700,fontSize:15}}>{k}</span><span style={{color:C.muted,fontSize:12}}>{gDisp[k].length} unidades</span></div>{gDisp[k].map(p=><PhoneCard key={p.id} p={p}/>)}</div>)}
+        {Object.keys(gDisp).sort().map(k=>{const isOpen=search.trim()!==""||!!expanded["d:"+k];return <div key={k}>
+          <div onClick={()=>toggleGroup("d:"+k)} style={{background:"#1e293b",borderRadius:10,padding:"10px 14px",marginBottom:6,display:"flex",justifyContent:"space-between",alignItems:"center",cursor:"pointer",userSelect:"none"}}>
+            <span style={{color:C.text,fontWeight:700,fontSize:15,display:"flex",alignItems:"center",gap:8}}><span style={{fontSize:12,color:C.muted,transition:"transform 0.15s",display:"inline-block",transform:isOpen?"rotate(90deg)":"rotate(0deg)"}}>▶</span>{k}</span>
+            <span style={{color:C.muted,fontSize:12}}>{gDisp[k].length} unidades</span>
+          </div>
+          {isOpen&&gDisp[k].map(p=><PhoneCard key={p.id} p={p}/>)}
+        </div>;})}
       </div>}
       {noDisp.length>0&&<div style={{marginTop:8}}>
         <SectionHeader icon="✅" label="Vendidos / Entregados" count={noDisp.length} color={C.red} bg={C.redDim}/>
-        {Object.keys(gNoDisp).sort().map(k=><div key={k}><div style={{background:"#1e293b",borderRadius:10,padding:"8px 14px",marginBottom:6,display:"flex",justifyContent:"space-between"}}><span style={{color:"#94a3b8",fontWeight:700,fontSize:15}}>{k}</span><span style={{color:C.muted,fontSize:12}}>{gNoDisp[k].length} unidades</span></div>{gNoDisp[k].map(p=><PhoneCard key={p.id} p={p}/>)}</div>)}
+        {Object.keys(gNoDisp).sort().map(k=>{const isOpen=search.trim()!==""||!!expanded["n:"+k];return <div key={k}>
+          <div onClick={()=>toggleGroup("n:"+k)} style={{background:"#1e293b",borderRadius:10,padding:"10px 14px",marginBottom:6,display:"flex",justifyContent:"space-between",alignItems:"center",cursor:"pointer",userSelect:"none"}}>
+            <span style={{color:"#94a3b8",fontWeight:700,fontSize:15,display:"flex",alignItems:"center",gap:8}}><span style={{fontSize:12,color:C.muted,transition:"transform 0.15s",display:"inline-block",transform:isOpen?"rotate(90deg)":"rotate(0deg)"}}>▶</span>{k}</span>
+            <span style={{color:C.muted,fontSize:12}}>{gNoDisp[k].length} unidades</span>
+          </div>
+          {isOpen&&gNoDisp[k].map(p=><PhoneCard key={p.id} p={p}/>)}
+        </div>;})}
       </div>}
     </div>}
   </div>;
@@ -848,6 +871,88 @@ function CierreCaja({user}){
 }
 
 // ─── APP ────────────────────────────────────────────────────────────────────
+// ─── USUARIOS ──────────────────────────────────────────────────────────────
+function Usuarios(){
+  const [items,setItems]=useState([]); const [loading,setLoading]=useState(true); const [toast,setToast]=useState(null);
+  const [editId,setEditId]=useState(null); const [saving,setSaving]=useState(false);
+  const [showPass,setShowPass]=useState({});
+  const E={nombre:"",username:"",password:"",rol:"empleado",tienda:""};
+  const [form,setForm]=useState(E); const ff=k=>v=>setForm(p=>({...p,[k]:v}));
+  const [showNew,setShowNew]=useState(false);
+
+  async function load(){setLoading(true);try{setItems(await api.get("usuarios","?order=nombre.asc"));}catch(e){setToast({t:"error",m:"Error cargando usuarios"});}setLoading(false);}
+  useEffect(()=>{load();},[]);
+
+  function startEdit(u){setEditId(u.id);setForm({nombre:u.nombre||"",username:u.username||"",password:u.password||"",rol:u.rol||"empleado",tienda:u.tienda||""});setShowNew(false);}
+  function cancelEdit(){setEditId(null);setForm(E);setShowNew(false);}
+
+  async function save(){
+    if(!form.nombre.trim()||!form.username.trim()||!form.password.trim()){setToast({t:"error",m:"Nombre, usuario y contraseña son obligatorios"});return;}
+    setSaving(true);
+    try{
+      const obj={nombre:form.nombre.trim(),username:form.username.trim().toLowerCase(),password:form.password,rol:form.rol,tienda:form.tienda||null};
+      if(editId){await api.patch("usuarios",editId,obj);setToast({t:"ok",m:"Usuario actualizado"});}
+      else{await api.post("usuarios",obj);setToast({t:"ok",m:"Usuario creado"});}
+      cancelEdit();load();
+    }catch(e){setToast({t:"error",m:"Error: "+e.message});}
+    setSaving(false);
+  }
+
+  function UserForm({title}){
+    return <div style={{...KS,border:"2px solid "+C.blue,marginBottom:16}} className="su">
+      <div style={{color:C.blue,fontWeight:800,fontSize:17,marginBottom:14}}>{title}</div>
+      <div style={{display:"grid",gridTemplateColumns:"1fr 1fr",gap:12,marginBottom:12}}>
+        <Field label="Nombre completo" value={form.nombre} onChange={ff("nombre")} placeholder="Ej: Jeremy"/>
+        <Field label="Usuario (login)" value={form.username} onChange={ff("username")} placeholder="Ej: jeremy"/>
+        <Field label="Contraseña" value={form.password} onChange={ff("password")} placeholder="Nueva contraseña"/>
+        <div><label style={LS}>Rol</label><select style={{...IS,appearance:"none"}} value={form.rol} onChange={e=>ff("rol")(e.target.value)}>
+          <option value="admin">Admin</option>
+          <option value="empleado">Empleado (rota de tienda)</option>
+          <option value="tienda">Tienda (fija)</option>
+          <option value="almacen">Almacén</option>
+        </select></div>
+        {(form.rol==="tienda"||form.rol==="almacen")&&<Field label="Tienda fija" value={form.tienda} onChange={ff("tienda")} options={TIENDAS}/>}
+      </div>
+      <div style={{display:"flex",gap:10}}>
+        <Btn onClick={save} full disabled={saving}>{saving?"⏳ Guardando...":"✓ Guardar"}</Btn>
+        <Btn onClick={cancelEdit} variant="ghost">✕</Btn>
+      </div>
+    </div>;
+  }
+
+  return <div style={{flex:1,overflowY:"auto",padding:16}}>
+    <Toast msg={toast} onClose={()=>setToast(null)}/>
+    <div style={{display:"flex",alignItems:"center",justifyContent:"space-between",marginBottom:16}}>
+      <h2 style={{fontSize:24,fontWeight:900,color:C.text}}>👤 Usuarios</h2>
+      <div style={{display:"flex",gap:8}}>
+        <button onClick={load} style={{background:C.card,border:"1px solid "+C.border,borderRadius:12,padding:"10px 14px",color:C.muted,cursor:"pointer"}}>🔄</button>
+        <Btn onClick={()=>{setShowNew(!showNew);setEditId(null);setForm(E);}} small>{showNew?"✕":"+ Nuevo"}</Btn>
+      </div>
+    </div>
+    {showNew&&<UserForm title="➕ Nuevo usuario"/>}
+    {loading?<Spin/>:items.length===0?<div style={{textAlign:"center",color:C.muted,padding:40}}>Sin usuarios</div>:
+      items.map(u=>editId===u.id?<UserForm key={u.id} title={"✏️ Editar: "+u.nombre}/>:
+        <div key={u.id} style={{...KS,marginBottom:10}}>
+          <div style={{display:"flex",justifyContent:"space-between",alignItems:"flex-start"}}>
+            <div>
+              <div style={{fontWeight:800,fontSize:16,color:C.text}}>{u.nombre}</div>
+              <div style={{color:C.muted,fontSize:13,marginTop:2}}>Usuario: <span style={{color:C.blue,fontFamily:"monospace"}}>{u.username}</span></div>
+              <div style={{color:C.muted,fontSize:13,marginTop:2,display:"flex",alignItems:"center",gap:6}}>
+                Contraseña: <span style={{fontFamily:"monospace"}}>{showPass[u.id]?u.password:"••••••••"}</span>
+                <span onClick={()=>setShowPass(p=>({...p,[u.id]:!p[u.id]}))} style={{cursor:"pointer",color:C.blue,fontSize:12}}>{showPass[u.id]?"ocultar":"ver"}</span>
+              </div>
+              <div style={{marginTop:8,display:"flex",gap:6,flexWrap:"wrap"}}>
+                <span style={{background:C.blueDim,color:C.blue,padding:"2px 10px",borderRadius:99,fontSize:12,fontWeight:700}}>{u.rol}</span>
+                {u.tienda&&<span style={{background:C.amberDim,color:C.amber,padding:"2px 10px",borderRadius:99,fontSize:12}}>{u.tienda}</span>}
+              </div>
+            </div>
+            <button onClick={()=>startEdit(u)} style={{background:"rgba(56,189,248,0.1)",border:"1px solid rgba(56,189,248,0.3)",borderRadius:8,padding:"6px 14px",color:C.blue,cursor:"pointer",fontSize:13}}>✏️ Editar</button>
+          </div>
+        </div>
+      )}
+  </div>;
+}
+
 function App(){
   const [user,setUser]=useState(null); const [tab,setTab]=useState("dashboard");
   if(!user)return <div style={{display:"flex",flexDirection:"column",height:"100vh"}}><Login onLogin={u=>{setUser(u);setTab(u.rol==="admin"?"dashboard":"inventario");}}/></div>;
@@ -860,10 +965,11 @@ function App(){
     {id:"deudores",label:"Deudores",icon:"🔴",roles:["admin"]},
     {id:"distribuidores",label:"Distrib.",icon:"🏪",roles:["admin"]},
     {id:"caja",label:"Caja",icon:"📋",roles:["admin","empleado","tienda"]},
+    {id:"usuarios",label:"Usuarios",icon:"👤",roles:["admin"]},
   ];
   const tabs=allTabs.filter(t=>t.roles.includes(user.rol));
   return <div style={{display:"flex",flexDirection:"column",height:"100vh"}}>
-    <div style={{background:"#0d1424",padding:"12px 16px",display:"flex",alignItems:"center",justifyContent:"space-between",borderBottom:"1px solid rgba(99,179,237,0.15)",flexShrink:0,paddingTop:"max(12px,env(safe-area-inset-top))"}}>
+    <div className="app-header" style={{background:"#0d1424",padding:"12px 16px",display:"flex",alignItems:"center",justifyContent:"space-between",borderBottom:"1px solid rgba(99,179,237,0.15)",flexShrink:0,paddingTop:"max(12px,env(safe-area-inset-top))"}}>
       <div style={{display:"flex",alignItems:"center",gap:8}}>
         <span style={{fontSize:18}}>📱</span>
         <span style={{fontWeight:900,fontSize:18,color:"#fff"}}>IMPORT</span>
@@ -876,7 +982,7 @@ function App(){
         <button onClick={()=>setUser(null)} style={{background:C.redDim,border:"1px solid rgba(248,113,113,0.3)",borderRadius:8,padding:"6px 12px",color:C.red,cursor:"pointer",fontSize:13,fontWeight:700}}>Salir</button>
       </div>
     </div>
-    <div style={{flex:1,overflow:"hidden",display:"flex",flexDirection:"column"}}>
+    <div className="app-content" style={{flex:1,overflow:"hidden",display:"flex",flexDirection:"column"}}>
       {tab==="dashboard"&&<Dashboard user={user}/>}
       {tab==="inventario"&&<Inventario user={user}/>}
       {tab==="entregas"&&<Entregas user={user}/>}
@@ -884,11 +990,12 @@ function App(){
       {tab==="deudores"&&<Deudores user={user}/>}
       {tab==="distribuidores"&&<Distribuidores/>}
       {tab==="caja"&&<CierreCaja user={user}/>}
+      {tab==="usuarios"&&<Usuarios/>}
     </div>
-    <div style={{background:"#0d1424",borderTop:"1px solid rgba(99,179,237,0.15)",display:"flex",flexShrink:0,paddingBottom:"max(14px,env(safe-area-inset-bottom))"}}>
-      {tabs.map(t=><button key={t.id} onClick={()=>setTab(t.id)} style={{flex:1,display:"flex",flexDirection:"column",alignItems:"center",justifyContent:"center",padding:"12px 4px 8px",background:"none",border:"none",cursor:"pointer",gap:4,minHeight:72,position:"relative"}}>
-        {tab===t.id&&<div style={{position:"absolute",top:0,left:"20%",right:"20%",height:3,borderRadius:"0 0 4px 4px",background:C.blue}}/>}
-        <span style={{fontSize:tab===t.id?32:26,lineHeight:1}}>{t.icon}</span>
+    <div className="app-nav" style={{background:"#0d1424",borderTop:"1px solid rgba(99,179,237,0.15)",display:"flex",flexShrink:0,paddingBottom:"max(14px,env(safe-area-inset-bottom))"}}>
+      {tabs.map(t=><button key={t.id} className="app-nav-btn" onClick={()=>setTab(t.id)} style={{flex:1,display:"flex",flexDirection:"column",alignItems:"center",justifyContent:"center",padding:"12px 4px 8px",background:"none",border:"none",cursor:"pointer",gap:4,minHeight:72,position:"relative"}}>
+        {tab===t.id&&<div className="app-nav-underline" style={{position:"absolute",top:0,left:"20%",right:"20%",height:3,borderRadius:"0 0 4px 4px",background:C.blue}}/>}
+        <span className="nav-icon" style={{fontSize:tab===t.id?32:26,lineHeight:1}}>{t.icon}</span>
         <span style={{fontSize:11,color:tab===t.id?C.blue:C.muted,fontWeight:tab===t.id?800:500}}>{t.label}</span>
       </button>)}
     </div>
