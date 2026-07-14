@@ -7,6 +7,9 @@
 <meta name="mobile-web-app-capable" content="yes"/>
 <meta name="apple-mobile-web-app-title" content="Importcells"/>
 <meta name="theme-color" content="#0a0f1e"/>
+<link rel="apple-touch-icon" href="icons/icon-180.png"/>
+<link rel="icon" type="image/png" sizes="32x32" href="icons/icon-32.png"/>
+<link rel="icon" type="image/png" sizes="16x16" href="icons/icon-16.png"/>
 <link rel="manifest" href="manifest.json"/>
 <title>Importcells</title>
 <script src="https://cdnjs.cloudflare.com/ajax/libs/react/18.2.0/umd/react.production.min.js"></script>
@@ -53,7 +56,7 @@ const LS={color:C.muted,fontSize:12,fontWeight:600,marginBottom:6,display:"block
 const KS={background:C.card,border:"1px solid "+C.border,borderRadius:16,padding:18,marginBottom:14};
 const TIENDAS=["Almacén Central","NM 3","NM A6","NM D5","PD C","PD S"];
 const TIENDAS_EMP=["NM 3","NM A6","NM D5","PD C","PD S"];
-const MARCAS=["Apple","Samsung","Xiaomi","Motorola","Huawei","OnePlus","Google","Sony","Realme","OPPO","Vivo","Nokia","Honor","Tecno"];
+const MARCAS=["Apple","Samsung","Xiaomi","Motorola","Huawei","OnePlus","Google","Sony","Realme","OPPO","Vivo","Nokia","Honor","Tecno","Infinix"];
 const ALMS=["32GB","64GB","128GB","256GB","512GB","1TB"];
 const RAMS=["2GB","3GB","4GB","6GB","8GB","12GB","16GB","24GB"];
 const COLORES=["Negro","Blanco","Azul","Rojo","Verde","Morado","Rosa","Dorado","Plateado","Gris","Titanio","Celeste","Naranja"];
@@ -95,16 +98,43 @@ function Field({label,value,onChange,type,placeholder,options}){
 
 function QRScanner({onScan,onClose}){
   const [detected,setDetected]=useState(null);
+  const [camError,setCamError]=useState(null);
+  const [starting,setStarting]=useState(true);
   const scannerRef=useRef(null);
   useEffect(()=>{
+    let cancelled=false;
     const scanner=new Html5Qrcode("qr-web-box");
     scannerRef.current=scanner;
-    scanner.start({facingMode:"environment"},{fps:10,qrbox:{width:300,height:120}},text=>{
+    const onDetect=text=>{
       const clean=text.replace(/\s/g,"");
       if(/^\d{15}$/.test(clean))setDetected(clean);
       else setDetected({rejected:clean.length>20?clean.substring(0,20)+"...":clean});
-    },()=>{}).catch(()=>{});
-    return()=>{scanner.stop().catch(()=>{});};
+    };
+    async function tryStart(){
+      setCamError(null);setStarting(true);
+      // Intento 1: pedir directamente la cámara trasera
+      try{
+        await scanner.start({facingMode:"environment"},{fps:10,qrbox:{width:300,height:120}},onDetect,()=>{});
+        if(!cancelled)setStarting(false);
+        return;
+      }catch(e1){ if(cancelled)return; }
+      // Intento 2 (fallback, común en iPhone/Safari): listar cámaras disponibles y usar la última (suele ser la trasera)
+      try{
+        const cams=await Html5Qrcode.getCameras();
+        if(!cams||cams.length===0)throw new Error("No se encontró ninguna cámara disponible.");
+        const cam=cams[cams.length-1];
+        await scanner.start({deviceId:{exact:cam.id}},{fps:10,qrbox:{width:300,height:120}},onDetect,()=>{});
+        if(!cancelled)setStarting(false);
+        return;
+      }catch(e2){
+        if(!cancelled){
+          setStarting(false);
+          setCamError((e2&&e2.message)||"No se pudo activar la cámara. Revisá que le diste permiso de cámara a Safari en Ajustes.");
+        }
+      }
+    }
+    tryStart();
+    return()=>{cancelled=true;scanner.stop().catch(()=>{});};
   },[]);
   function confirm(){if(detected&&!detected.rejected){scannerRef.current&&scannerRef.current.stop().catch(()=>{});onScan(detected);}}
   return <div style={{position:"fixed",inset:0,background:"rgba(0,0,0,0.95)",zIndex:9999,display:"flex",flexDirection:"column"}}>
@@ -114,7 +144,13 @@ function QRScanner({onScan,onClose}){
     </div>
     <div style={{flex:1,display:"flex",flexDirection:"column",alignItems:"center",justifyContent:"center",gap:16,padding:16}}>
       <div id="qr-web-box" style={{width:"90vw",maxWidth:380,borderRadius:16,overflow:"hidden",border:"3px solid "+(detected&&!detected.rejected?C.green:C.blue)}}/>
-      {!detected&&<div style={{color:"rgba(255,255,255,0.7)",fontSize:14,textAlign:"center"}}>Apuntá al código de barras del IMEI<br/>Solo acepta 15 dígitos numéricos</div>}
+      {starting&&!camError&&<div style={{color:"rgba(255,255,255,0.7)",fontSize:14,textAlign:"center"}}>Activando cámara...</div>}
+      {camError&&<div style={{background:C.redDim,border:"1px solid "+C.red,borderRadius:16,padding:18,width:"90vw",maxWidth:380,textAlign:"center"}}>
+        <div style={{color:C.red,fontWeight:800,marginBottom:6}}>⚠️ No se pudo abrir la cámara</div>
+        <div style={{color:C.text,fontSize:13,marginBottom:10}}>{camError}</div>
+        <div style={{color:C.muted,fontSize:12}}>En iPhone: Ajustes → Safari → Cámara → Permitir. Luego recargá la página.</div>
+      </div>}
+      {!detected&&!starting&&!camError&&<div style={{color:"rgba(255,255,255,0.7)",fontSize:14,textAlign:"center"}}>Apuntá al código de barras del IMEI<br/>Solo acepta 15 dígitos numéricos</div>}
       {detected&&detected.rejected&&<div style={{color:C.amber,fontSize:13,textAlign:"center"}}>⚠️ Detectado: {detected.rejected}<br/>No es IMEI — seguí buscando el de 15 dígitos</div>}
       {detected&&!detected.rejected&&<div style={{background:C.card,border:"2px solid "+C.green,borderRadius:16,padding:18,width:"90vw",maxWidth:380}}>
         <div style={{color:C.muted,fontSize:12,marginBottom:4}}>✅ IMEI detectado:</div>
@@ -189,19 +225,45 @@ function Login({onLogin}){
 // ─── INVENTARIO ────────────────────────────────────────────────────────────
 function Inventario({user}){
   const [items,setItems]=useState([]); const [modelosSug,setModelosSug]=useState([]); const [loading,setLoading]=useState(true);
+  const [coloresGuardados,setColoresGuardados]=useState([]); const [proveedoresGuardados,setProveedoresGuardados]=useState([]);
   const [show,setShow]=useState(false); const [saving,setSaving]=useState(false); const [toast,setToast]=useState(null);
   const [search,setSearch]=useState(""); const [fs,setFs]=useState("todos"); const [showQR,setShowQR]=useState(false);
   const [editItem,setEditItem]=useState(null);
   const [expanded,setExpanded]=useState({});
   const toggleGroup=k=>setExpanded(p=>({...p,[k]:!p[k]}));
   const isAdmin=user.rol==="admin"; const canEdit=user.rol==="admin"||user.rol==="almacen";
-  const E={imei:"",marca:"",modelo:"",color:"",almacenamiento:"",ram:"",precio:"",precio_mayorista:"",costo:"",ubicacion:user.tienda||"Almacén Central",tipo:"libre",notas:""};
+  const E={imei:"",marca:"",modelo:"",color:"",almacenamiento:"",ram:"",precio:"",precio_mayorista:"",costo:"",ubicacion:user.tienda||"Almacén Central",tipo:"libre",proveedor:"",notas:""};
   const [form,setForm]=useState(E); const ff=k=>v=>setForm(p=>({...p,[k]:v}));
   const [modeloInput,setModeloInput]=useState(""); const [showSug,setShowSug]=useState(false);
+  const [marcaInput,setMarcaInput]=useState(""); const [showMarcaSug,setShowMarcaSug]=useState(false);
+  const [colorInput,setColorInput]=useState(""); const [showColorSug,setShowColorSug]=useState(false);
+  const [provInput,setProvInput]=useState(""); const [showProvSug,setShowProvSug]=useState(false);
+
+  function onMarcaChange(v){setMarcaInput(v);ff("marca")(v);if(v.length>=1){const q=v.toLowerCase();setShowMarcaSug(marcasTodos.some(m=>m.toLowerCase().includes(q)));}else setShowMarcaSug(false);}
+  function selectMarca(m){setMarcaInput(m);ff("marca")(m);setShowMarcaSug(false);}
+
+  // Lista combinada de colores: predefinidos + los que se han escrito antes (sin duplicar)
+  const coloresTodos=(()=>{const set=new Map();COLORES.forEach(c=>set.set(c.toLowerCase(),c));coloresGuardados.forEach(c=>{if(c.color)set.set(c.color.toLowerCase(),c.color);});return Array.from(set.values());})();
+  const proveedoresTodos=(()=>{const set=new Map();proveedoresGuardados.forEach(p=>{if(p.proveedor)set.set(p.proveedor.toLowerCase(),p.proveedor);});return Array.from(set.values());})();
+  // Lista combinada de marcas: predefinidas + cualquier marca nueva ya usada en modelos guardados
+  const marcasTodos=(()=>{const set=new Map();MARCAS.forEach(m=>set.set(m.toLowerCase(),m));modelosSug.forEach(m=>{if(m.marca)set.set(m.marca.toLowerCase(),m.marca);});return Array.from(set.values());})();
 
   async function load(){setLoading(true);try{setItems(await api.get("inventario","?order=created_at.desc"));}catch(e){setToast({t:"error",m:"Error cargando"});}setLoading(false);}
   async function loadSug(){try{setModelosSug(await api.get("modelos_guardados","?order=created_at.desc"));}catch(e){}}
-  useEffect(()=>{load();loadSug();},[]);
+  async function loadColores(){try{setColoresGuardados(await api.get("colores_guardados","?order=created_at.desc"));}catch(e){}}
+  async function loadProveedores(){try{setProveedoresGuardados(await api.get("proveedores_guardados","?order=created_at.desc"));}catch(e){}}
+  useEffect(()=>{load();loadSug();loadColores();loadProveedores();},[]);
+
+  function onColorChange(v){setColorInput(v);ff("color")(v);if(v.length>=1){const q=v.toLowerCase();setShowColorSug(coloresTodos.some(c=>c.toLowerCase().includes(q)));}else setShowColorSug(false);}
+  function selectColor(c){setColorInput(c);ff("color")(c);setShowColorSug(false);}
+  function onProvChange(v){setProvInput(v);ff("proveedor")(v);if(v.length>=1){const q=v.toLowerCase();setShowProvSug(proveedoresTodos.some(p=>p.toLowerCase().includes(q)));}else setShowProvSug(false);}
+  function selectProv(p){setProvInput(p);ff("proveedor")(p);setShowProvSug(false);}
+
+  async function saveNewColorAndProv(){
+    const c=(form.color||"").trim(); const p=(form.proveedor||"").trim();
+    if(c&&!coloresTodos.some(x=>x.toLowerCase()===c.toLowerCase())){try{await api.post("colores_guardados",{color:c});loadColores();}catch(e){}}
+    if(p&&!proveedoresTodos.some(x=>x.toLowerCase()===p.toLowerCase())){try{await api.post("proveedores_guardados",{proveedor:p});loadProveedores();}catch(e){}}
+  }
 
   function onModeloChange(v){setModeloInput(v);ff("modelo")(v);if(v.length>=2){const q=v.toLowerCase();const f=modelosSug.filter(m=>(m.modelo||"").toLowerCase().includes(q)||(m.marca||"").toLowerCase().includes(q)).slice(0,5);setShowSug(f.length>0);}else setShowSug(false);}
   function selectSug(m){setForm(p=>({...p,modelo:m.modelo||"",marca:m.marca||p.marca,ram:m.ram||p.ram,almacenamiento:m.almacenamiento||p.almacenamiento}));setModeloInput(m.modelo||"");setShowSug(false);}
@@ -210,11 +272,20 @@ function Inventario({user}){
     if(!form.marca||!form.modelo.trim()){setToast({t:"error",m:"Marca y Modelo son obligatorios"});return;}
     if(!form.precio||+form.precio<=0){setToast({t:"error",m:"Ingresá un precio válido"});return;}
     setSaving(true);
-    const obj={imei:form.imei,marca:form.marca,modelo:form.modelo,color:form.color,almacenamiento:form.almacenamiento,ram:form.ram,precio:+form.precio,precio_mayorista:+(form.precio_mayorista||form.precio||0),costo:+(form.costo||0),ubicacion:form.ubicacion,tipo:form.tipo||"libre",estado:"disponible",notas:form.notas,fecha_ingreso:new Date().toISOString()};
+    const obj={imei:form.imei,marca:form.marca,modelo:form.modelo,color:form.color,almacenamiento:form.almacenamiento,ram:form.ram,precio:+form.precio,precio_mayorista:+(form.precio_mayorista||form.precio||0),costo:+(form.costo||0),ubicacion:form.ubicacion,tipo:form.tipo||"libre",proveedor:form.proveedor||"",estado:"disponible",notas:form.notas,fecha_ingreso:new Date().toISOString()};
     try{
-      await api.post("inventario",obj);
+      let provNoGuardado=false;
+      try{
+        await api.post("inventario",obj);
+      }catch(e){
+        const {proveedor,...objSinProveedor}=obj;
+        await api.post("inventario",objSinProveedor);
+        provNoGuardado=true;
+      }
       try{await api.post("modelos_guardados",{marca:form.marca,modelo:form.modelo,ram:form.ram,almacenamiento:form.almacenamiento});}catch(e){}
-      setToast({t:"ok",m:"Teléfono agregado"});setForm(E);setModeloInput("");setShow(false);load();loadSug();
+      await saveNewColorAndProv();
+      setToast(provNoGuardado?{t:"error",m:"Guardado, pero el Proveedor no se pudo guardar (falta actualizar la base de datos)"}:{t:"ok",m:"Teléfono agregado"});
+      setForm(E);setModeloInput("");setMarcaInput("");setColorInput("");setProvInput("");setShow(false);load();loadSug();
     }catch(e){setToast({t:"error",m:"Error: "+e.message});}
     setSaving(false);
   }
@@ -222,7 +293,8 @@ function Inventario({user}){
   async function saveEdit(){
     setSaving(true);
     try{
-      await api.patch("inventario",editItem.id,{marca:form.marca,modelo:form.modelo,color:form.color,almacenamiento:form.almacenamiento,ram:form.ram,precio:+form.precio,precio_mayorista:+(form.precio_mayorista||0),costo:+(form.costo||0),tipo:form.tipo,ubicacion:form.ubicacion,notas:form.notas});
+      await api.patch("inventario",editItem.id,{marca:form.marca,modelo:form.modelo,color:form.color,almacenamiento:form.almacenamiento,ram:form.ram,precio:+form.precio,precio_mayorista:+(form.precio_mayorista||0),costo:+(form.costo||0),tipo:form.tipo,ubicacion:form.ubicacion,proveedor:form.proveedor||"",notas:form.notas});
+      await saveNewColorAndProv();
       setToast({t:"ok",m:"Teléfono actualizado"});setEditItem(null);setForm(E);load();
     }catch(e){setToast({t:"error",m:"Error: "+e.message});}
     setSaving(false);
@@ -251,6 +323,7 @@ function Inventario({user}){
         {p.almacenamiento&&<span style={{background:C.blueDim,color:C.blue,padding:"2px 8px",borderRadius:6,fontSize:12}}>{p.almacenamiento}</span>}
         {p.ram&&<span style={{background:C.purpleDim,color:C.purple,padding:"2px 8px",borderRadius:6,fontSize:12}}>RAM: {p.ram}</span>}
         {p.ubicacion&&<span style={{background:C.amberDim,color:C.amber,padding:"2px 8px",borderRadius:6,fontSize:12}}>{p.ubicacion}</span>}
+        {p.proveedor&&<span style={{background:"rgba(167,139,250,0.10)",color:C.purple,padding:"2px 8px",borderRadius:6,fontSize:12}}>🏷️ {p.proveedor}</span>}
       </div>
       <div style={{display:"flex",flexWrap:"wrap",gap:8,alignItems:"center",marginBottom:6}}>
         <span style={{color:C.green,fontWeight:900,fontSize:18}}>S/.{(p.precio||0).toLocaleString()}</span>
@@ -264,7 +337,7 @@ function Inventario({user}){
           {fi&&<span>↓ {fmt(fi)}</span>}
           {fv&&<span style={{color:C.green,marginLeft:8}}>✓ {fmt(fv)}</span>}
         </div>
-        {isAdmin&&<button onClick={()=>{setEditItem(p);setForm({imei:p.imei||"",marca:p.marca||"",modelo:p.modelo||"",color:p.color||"",almacenamiento:p.almacenamiento||"",ram:p.ram||"",precio:p.precio||"",precio_mayorista:p.precio_mayorista||"",costo:p.costo||"",ubicacion:p.ubicacion||"Almacén Central",tipo:p.tipo||"libre",notas:p.notas||""});setModeloInput(p.modelo||"");setShow(false);}} style={{background:"rgba(56,189,248,0.1)",border:"1px solid rgba(56,189,248,0.3)",borderRadius:8,padding:"5px 12px",color:C.blue,cursor:"pointer",fontSize:13}}>✏️ Editar</button>}
+        {isAdmin&&<button onClick={()=>{setEditItem(p);setForm({imei:p.imei||"",marca:p.marca||"",modelo:p.modelo||"",color:p.color||"",almacenamiento:p.almacenamiento||"",ram:p.ram||"",precio:p.precio||"",precio_mayorista:p.precio_mayorista||"",costo:p.costo||"",ubicacion:p.ubicacion||"Almacén Central",tipo:p.tipo||"libre",proveedor:p.proveedor||"",notas:p.notas||""});setModeloInput(p.modelo||"");setMarcaInput(p.marca||"");setColorInput(p.color||"");setProvInput(p.proveedor||"");setShow(false);}} style={{background:"rgba(56,189,248,0.1)",border:"1px solid rgba(56,189,248,0.3)",borderRadius:8,padding:"5px 12px",color:C.blue,cursor:"pointer",fontSize:13}}>✏️ Editar</button>}
       </div>
     </div>;
   }
@@ -288,7 +361,13 @@ function Inventario({user}){
         </div>
       </div>
       <div style={{display:"grid",gridTemplateColumns:"1fr 1fr",gap:12,marginBottom:12}}>
-        <div><label style={LS}>Marca ★</label><select style={{...IS,appearance:"none"}} value={form.marca} onChange={e=>ff("marca")(e.target.value)}><option value="">Seleccionar...</option>{MARCAS.map(m=><option key={m}>{m}</option>)}</select></div>
+        <div style={{position:"relative"}}>
+          <label style={LS}>Marca ★</label>
+          <input style={IS} value={marcaInput} placeholder="Ej: Infinix..." onChange={e=>onMarcaChange(e.target.value)} onFocus={()=>marcaInput&&setShowMarcaSug(marcasTodos.some(m=>m.toLowerCase().includes(marcaInput.toLowerCase())))}/>
+          {showMarcaSug&&<div style={{position:"absolute",top:"100%",left:0,right:0,background:"#1e293b",borderRadius:10,border:"1px solid "+C.border,zIndex:100,maxHeight:180,overflowY:"auto"}}>
+            {marcasTodos.filter(m=>m.toLowerCase().includes(marcaInput.toLowerCase())).slice(0,6).map((m,i)=><div key={i} onClick={()=>selectMarca(m)} style={{padding:"9px 14px",cursor:"pointer",borderBottom:"1px solid "+C.border,fontSize:14,color:C.text}}>{m}</div>)}
+          </div>}
+        </div>
         <div style={{position:"relative"}}>
           <label style={LS}>Modelo ★</label>
           <input style={IS} value={modeloInput} placeholder="iPhone 17 Pro..." onChange={e=>onModeloChange(e.target.value)}/>
@@ -299,7 +378,13 @@ function Inventario({user}){
             </div>)}
           </div>}
         </div>
-        <div><label style={LS}>Color</label><select style={{...IS,appearance:"none"}} value={form.color} onChange={e=>ff("color")(e.target.value)}><option value="">Seleccionar...</option>{COLORES.map(c=><option key={c}>{c}</option>)}</select></div>
+        <div style={{position:"relative"}}>
+          <label style={LS}>Color</label>
+          <input style={IS} value={colorInput} placeholder="Ej: Titanium Black..." onChange={e=>onColorChange(e.target.value)} onFocus={()=>colorInput&&setShowColorSug(coloresTodos.some(c=>c.toLowerCase().includes(colorInput.toLowerCase())))}/>
+          {showColorSug&&<div style={{position:"absolute",top:"100%",left:0,right:0,background:"#1e293b",borderRadius:10,border:"1px solid "+C.border,zIndex:100,maxHeight:180,overflowY:"auto"}}>
+            {coloresTodos.filter(c=>c.toLowerCase().includes(colorInput.toLowerCase())).slice(0,6).map((c,i)=><div key={i} onClick={()=>selectColor(c)} style={{padding:"9px 14px",cursor:"pointer",borderBottom:"1px solid "+C.border,fontSize:14,color:C.text}}>{c}</div>)}
+          </div>}
+        </div>
         <div><label style={LS}>Almacenamiento</label><select style={{...IS,appearance:"none"}} value={form.almacenamiento} onChange={e=>ff("almacenamiento")(e.target.value)}><option value="">Seleccionar...</option>{ALMS.map(a=><option key={a}>{a}</option>)}</select></div>
         <div><label style={LS}>RAM</label><select style={{...IS,appearance:"none"}} value={form.ram} onChange={e=>ff("ram")(e.target.value)}><option value="">Seleccionar...</option>{RAMS.map(r=><option key={r}>{r}</option>)}</select></div>
         <div><label style={LS}>Tipo</label><select style={{...IS,appearance:"none"}} value={form.tipo} onChange={e=>ff("tipo")(e.target.value)}><option value="libre">📱 Libre</option><option value="registrado">✅ Registrado</option></select></div>
@@ -307,11 +392,18 @@ function Inventario({user}){
         <Field label="Precio mayorista (S/.)" value={form.precio_mayorista} onChange={ff("precio_mayorista")} type="number"/>
         {isAdmin&&<Field label="Costo (S/.) 🔒" value={form.costo} onChange={ff("costo")} type="number"/>}
         <Field label="Ubicación" value={form.ubicacion} onChange={ff("ubicacion")} options={TIENDAS}/>
+        <div style={{position:"relative"}}>
+          <label style={LS}>Proveedor</label>
+          <input style={IS} value={provInput} placeholder="Ej: Juan Pérez..." onChange={e=>onProvChange(e.target.value)} onFocus={()=>provInput&&setShowProvSug(proveedoresTodos.some(p=>p.toLowerCase().includes(provInput.toLowerCase())))}/>
+          {showProvSug&&<div style={{position:"absolute",top:"100%",left:0,right:0,background:"#1e293b",borderRadius:10,border:"1px solid "+C.border,zIndex:100,maxHeight:180,overflowY:"auto"}}>
+            {proveedoresTodos.filter(p=>p.toLowerCase().includes(provInput.toLowerCase())).slice(0,6).map((p,i)=><div key={i} onClick={()=>selectProv(p)} style={{padding:"9px 14px",cursor:"pointer",borderBottom:"1px solid "+C.border,fontSize:14,color:C.text}}>{p}</div>)}
+          </div>}
+        </div>
       </div>
       <Field label="Notas" value={form.notas} onChange={ff("notas")} placeholder="Observaciones..."/>
       <div style={{display:"flex",gap:10,marginTop:14}}>
         <Btn onClick={onSave} full disabled={saving}>{saving?"⏳ Guardando...":btnText}</Btn>
-        <Btn onClick={()=>{setShow(false);setEditItem(null);setForm(E);setModeloInput("");}} variant="ghost">✕</Btn>
+        <Btn onClick={()=>{setShow(false);setEditItem(null);setForm(E);setModeloInput("");setMarcaInput("");setColorInput("");setProvInput("");}} variant="ghost">✕</Btn>
       </div>
     </div>;
   }
@@ -323,7 +415,7 @@ function Inventario({user}){
       <h2 style={{fontSize:24,fontWeight:900,color:C.text}}>📦 Inventario</h2>
       <div style={{display:"flex",gap:8}}>
         <button onClick={load} style={{background:C.card,border:"1px solid "+C.border,borderRadius:12,padding:"10px 14px",color:C.muted,cursor:"pointer"}}>🔄</button>
-        {canEdit&&<Btn onClick={()=>{setShow(!show);setEditItem(null);setForm(E);setModeloInput("");}} small>{show?"✕":"+ Agregar"}</Btn>}
+        {canEdit&&<Btn onClick={()=>{setShow(!show);setEditItem(null);setForm(E);setModeloInput("");setMarcaInput("");setColorInput("");setProvInput("");}} small>{show?"✕":"+ Agregar"}</Btn>}
       </div>
     </div>
     <div style={{display:"grid",gridTemplateColumns:"1fr 1fr",gap:10,marginBottom:16}}>
@@ -521,7 +613,15 @@ function Ventas({user}){
     setSaving(false);
   }
 
-  async function markPaid(id,precio){await api.patch("ventas",id,{pagado:precio,estado_pago:"pagado"});load();}
+  async function markPaid(s){
+    const precio=s.precio_venta||0;
+    const yaPagado=(s.pago_efectivo||0)+(s.pago_yape||0)+(s.pago_transferencia||0);
+    const faltante=Math.max(0,precio-yaPagado);
+    // El faltante se suma a Efectivo (asumimos que se cobró en efectivo la diferencia),
+    // así el desglose que usa la pantalla de Caja también cuadra y no queda déficit fantasma.
+    await api.patch("ventas",s.id,{pagado:precio,estado_pago:"pagado",pago_efectivo:(s.pago_efectivo||0)+faltante});
+    load();
+  }
   async function anularVenta(s){
     if(!confirm("¿Anular esta venta? El teléfono volverá al inventario."))return;
     await api.patch("ventas",s.id,{estado_pago:"anulado"});
@@ -529,9 +629,11 @@ function Ventas({user}){
     setDetail(null);load();
   }
 
-  const grupos={};sales.forEach(s=>{const t=s.tienda||"Sin tienda";if(!grupos[t])grupos[t]=[];grupos[t].push(s);});
-  const cobrado=sales.reduce((a,s)=>a+(s.pagado||0),0);
-  const pendiente=sales.filter(s=>s.estado_pago!=="pagado").reduce((a,s)=>a+((s.precio_venta||0)-(s.pagado||0)),0);
+  const activas=sales.filter(s=>s.estado_pago!=="anulado");
+  const anuladas=sales.filter(s=>s.estado_pago==="anulado");
+  const grupos={};activas.forEach(s=>{const t=s.tienda||"Sin tienda";if(!grupos[t])grupos[t]=[];grupos[t].push(s);});
+  const cobrado=activas.reduce((a,s)=>a+(s.pagado||0),0);
+  const pendiente=activas.filter(s=>s.estado_pago!=="pagado").reduce((a,s)=>a+((s.precio_venta||0)-(s.pagado||0)),0);
 
   return <div style={{flex:1,overflowY:"auto",padding:16}}>
     <Toast msg={toast} onClose={()=>setToast(null)}/>
@@ -554,7 +656,7 @@ function Ventas({user}){
         {isAdmin&&<div style={{marginTop:16}}>
           <div style={{color:C.muted,fontSize:11,fontWeight:700,letterSpacing:1,marginBottom:10}}>CORRECCIONES — SOLO ADMIN</div>
           <div style={{display:"flex",gap:10}}>
-            {detail.estado_pago!=="pagado"&&<Btn onClick={async()=>{await markPaid(detail.id,detail.precio_venta);setDetail(null);}} variant="success" small style={{flex:1}}>✓ Marcar pagado</Btn>}
+            {((detail.pago_efectivo||0)+(detail.pago_yape||0)+(detail.pago_transferencia||0))<(detail.precio_venta||0)&&<Btn onClick={async()=>{await markPaid(detail);setDetail(null);}} variant="success" small style={{flex:1}}>✓ Marcar pagado</Btn>}
             <Btn onClick={()=>anularVenta(detail)} variant="danger" small style={{flex:1}}>✕ Anular venta</Btn>
           </div>
         </div>}
@@ -648,6 +750,24 @@ function Ventas({user}){
         })}
       </div>;
     })}
+    {isAdmin&&anuladas.length>0&&<AnuladasSection anuladas={anuladas}/>}
+  </div>;
+}
+
+function AnuladasSection({anuladas}){
+  const [open,setOpen]=useState(false);
+  return <div style={{marginTop:8}}>
+    <div onClick={()=>setOpen(!open)} style={{background:"rgba(148,163,184,0.08)",border:"1px solid "+C.border,borderRadius:12,padding:"10px 14px",display:"flex",justifyContent:"space-between",alignItems:"center",cursor:"pointer"}}>
+      <span style={{color:C.muted,fontWeight:700,fontSize:14}}>✕ Ventas anuladas</span>
+      <span style={{color:C.muted,fontSize:13}}>{anuladas.length} {open?"▲":"▼"}</span>
+    </div>
+    {open&&anuladas.map(s=><div key={s.id} style={{...KS,marginTop:8,opacity:0.6,borderLeft:"4px solid "+C.muted}}>
+      <div style={{display:"flex",justifyContent:"space-between"}}>
+        <span style={{fontWeight:700}}>{s.modelo}</span>
+        <span style={{color:C.muted,fontSize:12}}>ANULADO</span>
+      </div>
+      <div style={{color:C.muted,fontSize:13}}>{s.fecha} · {s.cliente||"Sin cliente"} · {s.empleado} · S/.{(s.precio_venta||0).toLocaleString()}</div>
+    </div>)}
   </div>;
 }
 
@@ -805,7 +925,7 @@ function CierreCaja({user}){
   const tiendas=isAdmin?TIENDAS_EMP:[user.tienda||"NM 3"];
   async function load(){setLoading(true);try{const [v,e]=await Promise.all([api.get("ventas","?order=created_at.desc"),api.get("entregas","?order=created_at.desc")]);setVentas(v);setEntregas(e);}catch(e){}setLoading(false);}
   useEffect(()=>{load();},[]);
-  function ventasDia(tienda){return ventas.filter(v=>(v.fecha||"").substring(0,10)===fecha&&v.tienda===tienda);}
+  function ventasDia(tienda){return ventas.filter(v=>(v.fecha||"").substring(0,10)===fecha&&v.tienda===tienda&&v.estado_pago!=="anulado");}
   function pagosDist(){return entregas.filter(e=>(e.fecha_entrega||"").substring(0,10)===fecha&&(e.estado_pago==="pagado"||e.estado_pago==="parcial"));}
   async function cerrar(tienda){
     if(!confirm("¿Cerrar caja de "+tienda+" del "+fecha+"?"))return;
