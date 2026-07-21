@@ -100,24 +100,39 @@ function Field({label,value,onChange,type,placeholder,options}){
 function QRScanner({onScan,onClose}){
   const [found,setFound]=useState([]); // hasta 2 IMEIs válidos detectados
   const [rejected,setRejected]=useState(null);
+  const [rejectedHint,setRejectedHint]=useState(null);
   const [camError,setCamError]=useState(null);
   const [starting,setStarting]=useState(true);
   const scannerRef=useRef(null);
   const foundRef=useRef([]);
+  // Igual que en Flutter: si es 15 dígitos limpio, lo acepta. Si es un número
+  // larguísimo de puros dígitos (20+, como el EID de eSIM de Samsung, 32 dígitos),
+  // NO se toca — ahí no hay ningún IMEI real adentro, inventar uno sería peligroso.
+  // Si mezcla texto con el IMEI, ahí sí extrae los 15 dígitos de adentro.
+  function extractImei(val){
+    const clean=val.replace(/\s/g,"");
+    if(/^\d{15}$/.test(clean))return clean;
+    if(/^\d+$/.test(clean)&&clean.length>=20)return null;
+    const m=clean.match(/\d{15}/);
+    return m?m[0]:null;
+  }
   useEffect(()=>{
     let cancelled=false;
     const scanner=new Html5Qrcode("qr-web-box");
     scannerRef.current=scanner;
     const onDetect=text=>{
       const clean=text.replace(/\s/g,"");
-      if(/^\d{15}$/.test(clean)){
-        if(foundRef.current.length<2&&!foundRef.current.includes(clean)){
-          foundRef.current=[...foundRef.current,clean];
+      const imei=extractImei(clean);
+      if(imei){
+        if(foundRef.current.length<2&&!foundRef.current.includes(imei)){
+          foundRef.current=[...foundRef.current,imei];
           setFound(foundRef.current);
           setRejected(null);
+          setRejectedHint(null);
         }
       }else if(foundRef.current.length===0){
         setRejected(clean.length>20?clean.substring(0,20)+"...":clean);
+        setRejectedHint(/^\d+$/.test(clean)&&clean.length>=20?"Eso es el EID (identificador eSIM), no el IMEI — buscá la barra de código que dice 'IMEI 1'.":null);
       }
     };
     async function tryStart(){
@@ -146,7 +161,7 @@ function QRScanner({onScan,onClose}){
     tryStart();
     return()=>{cancelled=true;scanner.stop().catch(()=>{});};
   },[]);
-  function reset(){foundRef.current=[];setFound([]);setRejected(null);}
+  function reset(){foundRef.current=[];setFound([]);setRejected(null);setRejectedHint(null);}
   function confirm(){
     if(found.length===0)return;
     scannerRef.current&&scannerRef.current.stop().catch(()=>{});
@@ -166,7 +181,7 @@ function QRScanner({onScan,onClose}){
         <div style={{color:C.muted,fontSize:12}}>En iPhone: Ajustes → Safari → Cámara → Permitir. Luego recargá la página.</div>
       </div>}
       {found.length===0&&!starting&&!camError&&<div style={{color:"rgba(255,255,255,0.7)",fontSize:14,textAlign:"center"}}>Apuntá al código de barras del IMEI<br/>Solo acepta 15 dígitos numéricos<br/>Si hay 2 (dual SIM), apuntá a ambos de seguido</div>}
-      {found.length===0&&rejected&&<div style={{color:C.amber,fontSize:13,textAlign:"center"}}>⚠️ Detectado: {rejected}<br/>No es IMEI — seguí buscando el de 15 dígitos</div>}
+      {found.length===0&&rejected&&<div style={{color:C.amber,fontSize:13,textAlign:"center"}}>⚠️ Detectado: {rejected}<br/>{rejectedHint||"No es IMEI — seguí buscando el de 15 dígitos"}</div>}
       {found.length>0&&<div style={{background:C.card,border:"2px solid "+C.green,borderRadius:16,padding:18,width:"90vw",maxWidth:380}}>
         <div style={{color:C.muted,fontSize:12,marginBottom:8}}>{found.length>=2?"✅ 2 IMEIs detectados:":"✅ IMEI detectado:"}</div>
         {found.map((f,i)=><div key={i} style={{marginBottom:i<found.length-1?10:0}}>
@@ -242,11 +257,50 @@ function Login({onLogin}){
 }
 
 // ─── INVENTARIO ────────────────────────────────────────────────────────────
+function Papelera({onClose,onRestore}){
+  const [items,setItems]=useState([]); const [loading,setLoading]=useState(true); const [toast,setToast]=useState(null);
+  async function load(){
+    setLoading(true);
+    try{setItems(await api.get("inventario","?eliminado=eq.true&order=created_at.desc"));}
+    catch(e){setToast({t:"error",m:"La papelera todavía no está lista (falta correr el SQL en Supabase)"});}
+    setLoading(false);
+  }
+  useEffect(()=>{load();},[]);
+  async function restaurar(p){
+    try{
+      await api.patch("inventario",p.id,{eliminado:false,estado:"disponible"});
+      setItems(prev=>prev.filter(x=>x.id!==p.id));
+      onRestore&&onRestore();
+    }catch(e){setToast({t:"error",m:"Error: "+e.message});}
+  }
+  return <div style={{position:"fixed",inset:0,background:"rgba(0,0,0,0.7)",zIndex:998,display:"flex",alignItems:"flex-end"}} onClick={onClose}>
+    <div style={{width:"100%",maxHeight:"85vh",background:C.surface,borderRadius:"24px 24px 0 0",padding:24,overflowY:"auto"}} onClick={e=>e.stopPropagation()}>
+      <Toast msg={toast} onClose={()=>setToast(null)}/>
+      <div style={{display:"flex",justifyContent:"space-between",alignItems:"center",marginBottom:6}}>
+        <span style={{color:C.text,fontWeight:800,fontSize:19}}>🗑️ Papelera</span>
+        <button onClick={onClose} style={{background:"none",border:"none",color:C.muted,cursor:"pointer",fontSize:20}}>✕</button>
+      </div>
+      <div style={{color:C.muted,fontSize:12,marginBottom:14}}>Teléfonos enviados a la papelera. Se pueden restaurar en cualquier momento.</div>
+      {loading?<Spin/>:items.length===0?<div style={{textAlign:"center",color:C.muted,padding:30}}>La papelera está vacía</div>:items.map(p=>
+        <div key={p.id} style={{background:"#1e293b",borderRadius:12,padding:14,marginBottom:10,display:"flex",justifyContent:"space-between",alignItems:"center"}}>
+          <div>
+            <div style={{color:C.text,fontWeight:700}}>{p.marca} {p.modelo}</div>
+            {p.imei&&<div style={{color:C.blue,fontSize:12,fontFamily:"monospace"}}>IMEI: {p.imei}</div>}
+          </div>
+          <button onClick={()=>restaurar(p)} style={{background:C.green,border:"none",borderRadius:10,padding:"8px 16px",color:"#0a0f1e",fontWeight:800,cursor:"pointer"}}>Restaurar</button>
+        </div>
+      )}
+    </div>
+  </div>;
+}
+
 function Inventario({user}){
   const [items,setItems]=useState([]); const [modelosSug,setModelosSug]=useState([]); const [loading,setLoading]=useState(true);
   const [coloresGuardados,setColoresGuardados]=useState([]); const [proveedoresGuardados,setProveedoresGuardados]=useState([]);
   const [show,setShow]=useState(false); const [saving,setSaving]=useState(false); const [toast,setToast]=useState(null);
   const [search,setSearch]=useState(""); const [fs,setFs]=useState("todos"); const [showQR,setShowQR]=useState(false); const [showQR2,setShowQR2]=useState(false);
+  const [showPapelera,setShowPapelera]=useState(false);
+  const [showQRBusqueda,setShowQRBusqueda]=useState(false);
   const [editItem,setEditItem]=useState(null);
   const [expanded,setExpanded]=useState({});
   const toggleGroup=k=>setExpanded(p=>({...p,[k]:!p[k]}));
@@ -267,7 +321,7 @@ function Inventario({user}){
   // Lista combinada de marcas: predefinidas + cualquier marca nueva ya usada en modelos guardados
   const marcasTodos=(()=>{const set=new Map();MARCAS.forEach(m=>set.set(m.toLowerCase(),m));modelosSug.forEach(m=>{if(m.marca)set.set(m.marca.toLowerCase(),m.marca);});return Array.from(set.values());})();
 
-  async function load(){setLoading(true);try{setItems(await api.get("inventario","?order=created_at.desc"));}catch(e){setToast({t:"error",m:"Error cargando"});}setLoading(false);}
+  async function load(){setLoading(true);try{setItems(await api.get("inventario","?eliminado=eq.false&order=created_at.desc"));}catch(e){try{setItems(await api.get("inventario","?order=created_at.desc"));}catch(e2){setToast({t:"error",m:"Error cargando"});}}setLoading(false);}
   async function loadSug(){try{setModelosSug(await api.get("modelos_guardados","?order=created_at.desc"));}catch(e){}}
   async function loadColores(){try{setColoresGuardados(await api.get("colores_guardados","?order=created_at.desc"));}catch(e){}}
   async function loadProveedores(){try{setProveedoresGuardados(await api.get("proveedores_guardados","?order=created_at.desc"));}catch(e){}}
@@ -379,6 +433,7 @@ function Inventario({user}){
         <div style={{display:"flex",gap:8}}>
           {isAdmin&&p.estado!=="disponible"&&<button onClick={async()=>{if(!confirm("¿Marcar disponible? Úsalo cuando el teléfono quedó atascado (ej. una entrega o venta devuelta que no actualizó el inventario)."))return;try{await api.patch("inventario",p.id,{estado:"disponible",fecha_venta:null});setToast({t:"ok",m:"✅ Marcado como disponible"});load();}catch(e){setToast({t:"error",m:"Error: "+e.message});}}} style={{background:"rgba(74,222,128,0.1)",border:"1px solid rgba(74,222,128,0.3)",borderRadius:8,padding:"5px 12px",color:C.green,cursor:"pointer",fontSize:13}}>🔓 Disponible</button>}
           {isAdmin&&<button onClick={()=>{setEditItem(p);setForm({imei:p.imei||"",imei2:p.imei2||"",marca:p.marca||"",modelo:p.modelo||"",color:p.color||"",almacenamiento:p.almacenamiento||"",ram:p.ram||"",precio:p.precio||"",precio_mayorista:p.precio_mayorista||"",costo:p.costo||"",ubicacion:p.ubicacion||"Almacén Central",tipo:p.tipo||"libre",proveedor:p.proveedor||"",notas:p.notas||""});setModeloInput(p.modelo||"");setMarcaInput(p.marca||"");setColorInput(p.color||"");setProvInput(p.proveedor||"");setShow(false);}} style={{background:"rgba(56,189,248,0.1)",border:"1px solid rgba(56,189,248,0.3)",borderRadius:8,padding:"5px 12px",color:C.blue,cursor:"pointer",fontSize:13}}>✏️ Editar</button>}
+          {isAdmin&&<button onClick={async()=>{if(!confirm("¿Enviar "+(p.marca||"")+" "+(p.modelo||"")+(p.imei?" (IMEI: "+p.imei+")":"")+" a la papelera?\n\nDejará de aparecer en el inventario. Se puede restaurar después si fue un error."))return;try{await api.patch("inventario",p.id,{eliminado:true});await api.post("auditoria",{usuario:user.nombre,accion:"Envió a papelera",tabla:"inventario",detalle:(p.marca||"")+" "+(p.modelo||"")+" — IMEI: "+(p.imei||"")});setToast({t:"ok",m:"🗑️ Enviado a la papelera (se puede restaurar)"});load();}catch(e){setToast({t:"error",m:"Error: "+e.message});}}} style={{background:"rgba(248,113,113,0.1)",border:"1px solid rgba(248,113,113,0.3)",borderRadius:8,padding:"5px 10px",color:C.red,cursor:"pointer",fontSize:13}}>🗑️</button>}
         </div>
       </div>
     </div>;
@@ -473,15 +528,21 @@ function Inventario({user}){
       <h2 style={{fontSize:24,fontWeight:900,color:C.text}}>📦 Inventario</h2>
       <div style={{display:"flex",gap:8}}>
         <button onClick={load} style={{background:C.card,border:"1px solid "+C.border,borderRadius:12,padding:"10px 14px",color:C.muted,cursor:"pointer"}}>🔄</button>
+        {isAdmin&&<button onClick={()=>setShowPapelera(true)} style={{background:C.card,border:"1px solid "+C.border,borderRadius:12,padding:"10px 14px",color:C.muted,cursor:"pointer",fontSize:13}}>🗑️ Papelera</button>}
         {canEdit&&<Btn onClick={()=>{setShow(!show);setEditItem(null);setForm(E);setModeloInput("");setMarcaInput("");setColorInput("");setProvInput("");}} small>{show?"✕":"+ Agregar"}</Btn>}
       </div>
     </div>
+    {showPapelera&&<Papelera onClose={()=>setShowPapelera(false)} onRestore={load}/>}
     <div style={{display:"grid",gridTemplateColumns:"1fr 1fr",gap:10,marginBottom:16}}>
       {[["Total",items.length,C.blue],["Disponible",items.filter(p=>p.estado==="disponible").length,C.green],["Vendido",items.filter(p=>p.estado==="vendido").length,C.red],["Entregado",items.filter(p=>p.estado==="entregado").length,C.amber]].map(([l,v,c])=><div key={l} style={{background:c+"22",border:"1px solid "+c+"44",borderRadius:16,padding:"14px 12px",textAlign:"center"}}><div style={{fontSize:26,fontWeight:900,color:c}}>{v}</div><div style={{color:c,fontSize:13,fontWeight:600}}>{l}</div></div>)}
     </div>
     {show&&!editItem&&<FormPanel onSave={add} title="➕ Nuevo Teléfono" btnText="✓ Guardar teléfono"/>}
     {editItem&&<FormPanel onSave={saveEdit} title={"✏️ Editar: "+editItem.marca+" "+editItem.modelo} btnText="✓ Guardar cambios"/>}
-    <input style={{...IS,marginBottom:12}} placeholder="🔍 Buscar IMEI, marca o modelo..." value={search} onChange={e=>setSearch(e.target.value)}/>
+    <div style={{display:"flex",gap:8,marginBottom:12}}>
+      <input style={{...IS,flex:1}} placeholder="🔍 Buscar IMEI, marca o modelo..." value={search} onChange={e=>setSearch(e.target.value)}/>
+      <button onClick={()=>setShowQRBusqueda(true)} style={{background:C.blueDim,border:"2px solid "+C.blue,borderRadius:12,padding:"0 16px",cursor:"pointer",fontSize:18,color:C.blue}}>⬛</button>
+    </div>
+    {showQRBusqueda&&<QRScanner onScan={v=>{const imei=Array.isArray(v)?v[0]:v;setSearch(imei);setFs("todos");setShowQRBusqueda(false);}} onClose={()=>setShowQRBusqueda(false)}/>}
     <div style={{display:"flex",gap:8,marginBottom:14,overflowX:"auto",paddingBottom:4}}>
       {["todos","disponible","entregado","vendido"].map(f=><button key={f} onClick={()=>setFs(f)} style={{padding:"9px 16px",borderRadius:99,border:"1px solid "+(fs===f?C.blue:C.border),background:fs===f?"rgba(56,189,248,0.15)":"rgba(255,255,255,0.05)",color:fs===f?C.blue:C.muted,cursor:"pointer",fontSize:13,fontWeight:600,whiteSpace:"nowrap"}}>{f.charAt(0).toUpperCase()+f.slice(1)}</button>)}
     </div>
@@ -644,7 +705,7 @@ function Entregas({user}){
       const waMsg="Hola "+d.revendedor_nombre+"! Recordatorio:\n📱 "+(d.marca||"")+" "+d.modelo+"\n🔴 Debe: S/."+falta.toFixed(0);
       return <div key={d.id} style={{...KS,borderLeft:"4px solid "+color,opacity:d.estado_pago==="pagado"?0.7:1}}>
         <div style={{display:"flex",justifyContent:"space-between",marginBottom:8}}>
-          <div><div style={{fontWeight:800,fontSize:17}}>{d.revendedor_nombre||"Sin dist."}</div><div style={{color:C.muted,fontSize:12}}>{d.fecha_entrega} {d.hora_entrega} · {d.empleado_nombre}</div></div>
+          <div><div style={{fontWeight:800,fontSize:19,display:"flex",alignItems:"center",gap:6}}><span>🏪</span><span>{(d.revendedor_nombre||"Sin dist.").toUpperCase()}</span></div><div style={{color:C.muted,fontSize:12}}>{d.fecha_entrega} {d.hora_entrega} · {d.empleado_nombre}</div></div>
           <span style={badge(d.estado_pago)}>{d.estado_pago}</span>
         </div>
         <div style={{fontWeight:600,fontSize:15,marginBottom:4}}>{d.marca} {d.modelo} {d.almacenamiento}</div>
@@ -670,7 +731,7 @@ function Ventas({user}){
   const [loading,setLoading]=useState(true); const [show,setShow]=useState(false); const [saving,setSaving]=useState(false);
   const [toast,setToast]=useState(null); const [showQR,setShowQR]=useState(false); const [detail,setDetail]=useState(null);
   const isAdmin=user.rol==="admin";
-  const E={inv_id:"",imei:"",modelo:"",tienda:user.tienda||"NM 3",cliente:"",precio:"",efectivo:"",yape:"",transferencia:"",notas:"",accesorios:{}};
+  const E={inv_id:"",imei:"",modelo:"",tienda:user.tienda||"NM 3",cliente:"",precio:"",efectivo:"",yape:"",transferencia:"",tarjeta:"",notas:"",accesorios:{}};
   const [form,setForm]=useState(E); const ff=k=>v=>setForm(p=>({...p,[k]:v}));
   const [accPrecios,setAccPrecios]=useState({});
   const [fechaFiltro,setFechaFiltro]=useState(new Date().toISOString().substring(0,10));
@@ -699,15 +760,15 @@ function Ventas({user}){
     const precio=+form.precio;if(precio<=0){setToast({t:"error",m:"Ingresá un precio válido"});return;}
     setSaving(true);
     try{
-      const ef=+(form.efectivo||0),yp=+(form.yape||0),tr=+(form.transferencia||0);
+      const ef=+(form.efectivo||0),yp=+(form.yape||0),tr=+(form.transferencia||0),tj=+(form.tarjeta||0);
       const accTotal=Object.entries(accPrecios).reduce((a,[k,v])=>form.accesorios[k]?a+(+v||0):a,0);
       const totalConAcc=precio+accTotal;
-      const paid=Math.min(ef+yp+tr,totalConAcc);
+      const paid=Math.min(ef+yp+tr+tj,totalConAcc);
       const ps=paid>=totalConAcc?"pagado":paid>0?"parcial":"pendiente";
-      const metodo=[ef>0?"Efectivo":"",yp>0?"Yape":"",tr>0?"Transferencia":""].filter(Boolean).join(" + ")||"Efectivo";
+      const metodo=[ef>0?"Efectivo":"",yp>0?"Yape":"",tr>0?"Transferencia":"",tj>0?"Tarjeta":""].filter(Boolean).join(" + ")||"Efectivo";
       const accList=Object.keys(form.accesorios).filter(k=>form.accesorios[k]).map(k=>{const p=accPrecios[k]||0;return k+(p>0?" (S/."+p+")":"");}).join(", ");
       const notasFinal=[form.notas,accList?"Accesorios: "+accList:""].filter(Boolean).join(" | ");
-      await api.post("ventas",{inventario_id:form.inv_id||null,imei:form.imei,modelo:form.modelo,tienda:form.tienda,cliente:form.cliente,precio_venta:totalConAcc,pagado:paid,estado_pago:ps,metodo_pago:metodo,pago_efectivo:ef,pago_yape:yp,pago_transferencia:tr,fecha:new Date().toISOString().substring(0,10),notas:notasFinal,empleado:user.nombre});
+      await api.post("ventas",{inventario_id:form.inv_id||null,imei:form.imei,modelo:form.modelo,tienda:form.tienda,cliente:form.cliente,precio_venta:totalConAcc,pagado:paid,estado_pago:ps,metodo_pago:metodo,pago_efectivo:ef,pago_yape:yp,pago_transferencia:tr,pago_tarjeta:tj,fecha:new Date().toISOString().substring(0,10),notas:notasFinal,empleado:user.nombre});
       if(form.inv_id)await api.patch("inventario",form.inv_id,{estado:"vendido",fecha_venta:new Date().toISOString()});
       setToast({t:"ok",m:"Venta registrada"});setForm(E);setAccPrecios({});setShow(false);load();
     }catch(e){setToast({t:"error",m:"Error: "+e.message});}
@@ -716,7 +777,7 @@ function Ventas({user}){
 
   async function markPaid(s){
     const precio=s.precio_venta||0;
-    const yaPagado=(s.pago_efectivo||0)+(s.pago_yape||0)+(s.pago_transferencia||0);
+    const yaPagado=(s.pago_efectivo||0)+(s.pago_yape||0)+(s.pago_transferencia||0)+(s.pago_tarjeta||0);
     const faltante=Math.max(0,precio-yaPagado);
     // El faltante se suma a Efectivo (asumimos que se cobró en efectivo la diferencia),
     // así el desglose que usa la pantalla de Caja también cuadra y no queda déficit fantasma.
@@ -724,18 +785,18 @@ function Ventas({user}){
     load();
   }
   function startEditSale(s){
-    setEditForm({cliente:s.cliente||"",precio_venta:s.precio_venta||"",efectivo:s.pago_efectivo||"",yape:s.pago_yape||"",transferencia:s.pago_transferencia||"",notas:s.notas||""});
+    setEditForm({cliente:s.cliente||"",tienda:s.tienda||"",precio_venta:s.precio_venta||"",efectivo:s.pago_efectivo||"",yape:s.pago_yape||"",transferencia:s.pago_transferencia||"",tarjeta:s.pago_tarjeta||"",notas:s.notas||""});
     setEditSale(s);setDetail(null);
   }
   async function saveEditVenta(){
     const precio=+editForm.precio_venta||0;
     if(precio<=0){setToast({t:"error",m:"Ingresá un precio válido"});return;}
-    const ef=+editForm.efectivo||0,yp=+editForm.yape||0,tr=+editForm.transferencia||0;
-    const pagado=Math.min(ef+yp+tr,precio);
+    const ef=+editForm.efectivo||0,yp=+editForm.yape||0,tr=+editForm.transferencia||0,tj=+editForm.tarjeta||0;
+    const pagado=Math.min(ef+yp+tr+tj,precio);
     const ps=pagado>=precio?"pagado":pagado>0?"parcial":"pendiente";
-    const metodo=[ef>0&&"Efectivo",yp>0&&"Yape",tr>0&&"Transferencia"].filter(Boolean).join(" + ");
+    const metodo=[ef>0&&"Efectivo",yp>0&&"Yape",tr>0&&"Transferencia",tj>0&&"Tarjeta"].filter(Boolean).join(" + ");
     try{
-      await api.patch("ventas",editSale.id,{cliente:editForm.cliente,precio_venta:precio,pago_efectivo:ef,pago_yape:yp,pago_transferencia:tr,pagado,estado_pago:ps,metodo_pago:metodo,notas:editForm.notas});
+      await api.patch("ventas",editSale.id,{cliente:editForm.cliente,tienda:editForm.tienda,precio_venta:precio,pago_efectivo:ef,pago_yape:yp,pago_transferencia:tr,pago_tarjeta:tj,pagado,estado_pago:ps,metodo_pago:metodo,notas:editForm.notas});
       setToast({t:"ok",m:"✅ Venta corregida"});setEditSale(null);load();
     }catch(e){setToast({t:"error",m:"Error: "+e.message});}
   }
@@ -772,10 +833,11 @@ function Ventas({user}){
         {[["👤 Cliente",detail.cliente||"Sin cliente"],["🏪 Tienda",detail.tienda||""],["👤 Vendedor",detail.empleado||""],["📅 Fecha",(detail.fecha||"")+(fmtHora(detail.created_at)?"  🕐 "+fmtHora(detail.created_at):"")],["📱 IMEI",detail.imei||"—"]].map(([l,v])=><div key={l} style={{display:"flex",justifyContent:"space-between",padding:"8px 0",borderBottom:"1px solid "+C.border}}><span style={{color:C.muted,fontSize:14}}>{l}</span><span style={{color:C.text,fontWeight:600,fontSize:14}}>{v}</span></div>)}
         <div style={{height:8}}/>
         {[["💰 Total","S/."+(detail.precio_venta||0),C.blue],["✅ Cobrado","S/."+(detail.pagado||0),C.green],detail.precio_venta>detail.pagado&&["⏳ Pendiente","S/."+((detail.precio_venta||0)-(detail.pagado||0)),C.red]].filter(Boolean).map(([l,v,c])=><div key={l} style={{display:"flex",justifyContent:"space-between",padding:"8px 0",borderBottom:"1px solid "+C.border}}><span style={{color:C.muted,fontSize:14}}>{l}</span><span style={{color:c,fontWeight:700,fontSize:15}}>{v}</span></div>)}
-        {(detail.pago_efectivo>0||detail.pago_yape>0||detail.pago_transferencia>0)&&<div style={{marginTop:8}}>
+        {(detail.pago_efectivo>0||detail.pago_yape>0||detail.pago_transferencia>0||detail.pago_tarjeta>0)&&<div style={{marginTop:8}}>
           {detail.pago_efectivo>0&&<div style={{display:"flex",justifyContent:"space-between",padding:"6px 0"}}><span style={{color:C.muted,fontSize:13}}>💵 Efectivo</span><span style={{color:C.green,fontWeight:600}}>S/.{detail.pago_efectivo}</span></div>}
           {detail.pago_yape>0&&<div style={{display:"flex",justifyContent:"space-between",padding:"6px 0"}}><span style={{color:C.muted,fontSize:13}}>📱 Yape</span><span style={{color:C.purple,fontWeight:600}}>S/.{detail.pago_yape}</span></div>}
           {detail.pago_transferencia>0&&<div style={{display:"flex",justifyContent:"space-between",padding:"6px 0"}}><span style={{color:C.muted,fontSize:13}}>🏦 Transferencia</span><span style={{color:C.blue,fontWeight:600}}>S/.{detail.pago_transferencia}</span></div>}
+          {detail.pago_tarjeta>0&&<div style={{display:"flex",justifyContent:"space-between",padding:"6px 0"}}><span style={{color:C.muted,fontSize:13}}>💳 Tarjeta</span><span style={{color:C.amber,fontWeight:600}}>S/.{detail.pago_tarjeta}</span></div>}
         </div>}
         {detail.notas&&<div style={{marginTop:8,padding:"10px 14px",background:C.amberDim,borderRadius:10,color:C.amber,fontSize:13}}>📝 {detail.notas}</div>}
         <div style={{marginTop:16}}>
@@ -784,7 +846,7 @@ function Ventas({user}){
         {isAdmin&&<div style={{marginTop:16}}>
           <div style={{color:C.muted,fontSize:11,fontWeight:700,letterSpacing:1,marginBottom:10}}>CORRECCIONES — SOLO ADMIN</div>
           <div style={{display:"flex",gap:10}}>
-            {((detail.pago_efectivo||0)+(detail.pago_yape||0)+(detail.pago_transferencia||0))<(detail.precio_venta||0)&&<Btn onClick={async()=>{await markPaid(detail);setDetail(null);}} variant="success" small style={{flex:1}}>✓ Marcar pagado</Btn>}
+            {((detail.pago_efectivo||0)+(detail.pago_yape||0)+(detail.pago_transferencia||0)+(detail.pago_tarjeta||0))<(detail.precio_venta||0)&&<Btn onClick={async()=>{await markPaid(detail);setDetail(null);}} variant="success" small style={{flex:1}}>✓ Marcar pagado</Btn>}
             <Btn onClick={()=>anularVenta(detail)} variant="danger" small style={{flex:1}}>✕ Anular venta</Btn>
           </div>
         </div>}
@@ -799,16 +861,19 @@ function Ventas({user}){
         <div style={{color:C.muted,fontSize:12,marginBottom:14}}>Corrige el precio, el método de pago o el cliente si algo no cuadró al momento de la venta.</div>
         <Field label="Cliente" value={editForm.cliente} onChange={eff("cliente")} placeholder="Nombre"/>
         <div style={{height:10}}/>
+        <Field label="Tienda" value={editForm.tienda} onChange={eff("tienda")} options={TIENDAS_EMP}/>
+        <div style={{height:10}}/>
         <Field label="Precio total (S/.) ★" value={editForm.precio_venta} onChange={eff("precio_venta")} type="number"/>
         <div style={{height:10}}/>
         <div style={{background:"rgba(74,222,128,0.06)",border:"1px solid rgba(74,222,128,0.2)",borderRadius:12,padding:14,marginBottom:12}}>
           <div style={{color:C.muted,fontSize:11,fontWeight:700,letterSpacing:1,marginBottom:10}}>FORMAS DE PAGO</div>
-          <div style={{display:"grid",gridTemplateColumns:"1fr 1fr 1fr",gap:10}}>
+          <div style={{display:"grid",gridTemplateColumns:"1fr 1fr 1fr 1fr",gap:10}}>
             <div><label style={{...LS,color:C.green}}>💵 Efectivo</label><input style={IS} type="number" value={editForm.efectivo} placeholder="S/." onChange={e=>eff("efectivo")(e.target.value)}/></div>
             <div><label style={{...LS,color:C.purple}}>📱 Yape</label><input style={IS} type="number" value={editForm.yape} placeholder="S/." onChange={e=>eff("yape")(e.target.value)}/></div>
             <div><label style={{...LS,color:C.blue}}>🏦 Transf.</label><input style={IS} type="number" value={editForm.transferencia} placeholder="S/." onChange={e=>eff("transferencia")(e.target.value)}/></div>
+            <div><label style={{...LS,color:C.amber}}>💳 Tarjeta</label><input style={IS} type="number" value={editForm.tarjeta} placeholder="S/." onChange={e=>eff("tarjeta")(e.target.value)}/></div>
           </div>
-          {(()=>{const tot=+editForm.precio_venta||0;const rec=(+editForm.efectivo||0)+(+editForm.yape||0)+(+editForm.transferencia||0);const falta=tot-rec;return <div style={{marginTop:10,padding:"8px 12px",background:"rgba(74,222,128,0.1)",borderRadius:8}}>
+          {(()=>{const tot=+editForm.precio_venta||0;const rec=(+editForm.efectivo||0)+(+editForm.yape||0)+(+editForm.transferencia||0)+(+editForm.tarjeta||0);const falta=tot-rec;return <div style={{marginTop:10,padding:"8px 12px",background:"rgba(74,222,128,0.1)",borderRadius:8}}>
             <div style={{display:"flex",justifyContent:"space-between"}}><span style={{color:C.muted,fontSize:13}}>Total recibido:</span><span style={{color:C.green,fontWeight:800}}>S/.{rec.toFixed(0)}</span></div>
             {falta>0&&<div style={{display:"flex",justifyContent:"space-between",marginTop:4}}><span style={{color:C.red,fontSize:12}}>⚠️ Falta cobrar:</span><span style={{color:C.red,fontWeight:700,fontSize:13}}>S/.{falta.toFixed(0)}</span></div>}
           </div>;})()}
@@ -881,12 +946,13 @@ function Ventas({user}){
       );})()}
       <div style={{background:"rgba(74,222,128,0.06)",border:"1px solid rgba(74,222,128,0.2)",borderRadius:12,padding:14,marginBottom:12}}>
         <div style={{color:C.muted,fontSize:11,fontWeight:700,letterSpacing:1,marginBottom:10}}>FORMAS DE PAGO</div>
-        <div style={{display:"grid",gridTemplateColumns:"1fr 1fr 1fr",gap:10}}>
+        <div style={{display:"grid",gridTemplateColumns:"1fr 1fr 1fr 1fr",gap:10}}>
           <div><label style={{...LS,color:C.green}}>💵 Efectivo</label><input style={IS} type="number" value={form.efectivo} placeholder="S/." onChange={e=>ff("efectivo")(e.target.value)}/></div>
           <div><label style={{...LS,color:C.purple}}>📱 Yape</label><input style={IS} type="number" value={form.yape} placeholder="S/." onChange={e=>ff("yape")(e.target.value)}/></div>
           <div><label style={{...LS,color:C.blue}}>🏦 Transf.</label><input style={IS} type="number" value={form.transferencia} placeholder="S/." onChange={e=>ff("transferencia")(e.target.value)}/></div>
+          <div><label style={{...LS,color:C.amber}}>💳 Tarjeta</label><input style={IS} type="number" value={form.tarjeta} placeholder="S/." onChange={e=>ff("tarjeta")(e.target.value)}/></div>
         </div>
-        {(()=>{const accTotal=ACCS.reduce((a,acc)=>a+(form.accesorios[acc]?Number(accPrecios[acc]||0):0),0);const totalConAcc=Number(form.precio||0)+accTotal;const totalRecibido=Number(form.efectivo||0)+Number(form.yape||0)+Number(form.transferencia||0);const falta=totalConAcc-totalRecibido;return(
+        {(()=>{const accTotal=ACCS.reduce((a,acc)=>a+(form.accesorios[acc]?Number(accPrecios[acc]||0):0),0);const totalConAcc=Number(form.precio||0)+accTotal;const totalRecibido=Number(form.efectivo||0)+Number(form.yape||0)+Number(form.transferencia||0)+Number(form.tarjeta||0);const falta=totalConAcc-totalRecibido;return(
           <div style={{marginTop:10,padding:"8px 12px",background:"rgba(74,222,128,0.1)",borderRadius:8}}>
             <div style={{display:"flex",justifyContent:"space-between"}}>
               <span style={{color:C.muted,fontSize:13}}>Total recibido:</span>
@@ -1001,7 +1067,7 @@ function Deudores({user}){
       const waMsg="Hola "+d.nombre+"! Resumen de deuda:\n\n"+msgs+"\n\n💰 Total: S/."+total.toFixed(0)+"\n✅ Pagado: S/."+pagado.toFixed(0)+"\n🔴 DEBE: S/."+debe.toFixed(0)+"\n\nPor favor coordinar pago. Gracias!";
       return <div key={d.id} style={{...KS,borderLeft:"4px solid "+(venc>0?C.red:C.amber),marginBottom:16}}>
         <div style={{display:"flex",justifyContent:"space-between",marginBottom:10}}>
-          <div><div style={{fontWeight:900,fontSize:18}}>{d.nombre}</div><div style={{color:C.muted,fontSize:13}}>👤 {d.contacto||"—"} · 📱 {d.telefono||"Sin número"}</div>{venc>0&&<span style={{background:C.redDim,color:C.red,padding:"3px 10px",borderRadius:99,fontSize:12,fontWeight:700,marginTop:4,display:"inline-block"}}>⚠️ {venc} vencida{venc>1?"s":""}</span>}</div>
+          <div><div style={{display:"flex",alignItems:"center",gap:6}}><span style={{fontSize:20}}>🏪</span><span style={{fontWeight:900,fontSize:21,letterSpacing:0.3}}>{(d.nombre||"").toUpperCase()}</span></div><div style={{color:C.muted,fontSize:13,marginTop:2}}>👤 {d.contacto||"—"} · 📱 {d.telefono||"Sin número"}</div>{venc>0&&<span style={{background:C.redDim,color:C.red,padding:"3px 10px",borderRadius:99,fontSize:12,fontWeight:700,marginTop:4,display:"inline-block"}}>⚠️ {venc} vencida{venc>1?"s":""}</span>}</div>
           <div style={{textAlign:"right"}}><div style={{color:C.red,fontWeight:900,fontSize:24}}>S/.{debe.toLocaleString()}</div><div style={{color:C.muted,fontSize:12}}>de S/.{total.toLocaleString()}</div></div>
         </div>
         <div style={{background:C.amberDim,border:"1px solid rgba(251,191,36,0.2)",borderRadius:12,padding:14,marginBottom:12}}>
@@ -1058,7 +1124,7 @@ function Distribuidores(){
       </div>
     </div>}
     {loading?<Spin/>:list.length===0?<div style={{textAlign:"center",color:C.muted,padding:40}}>Sin distribuidores</div>:list.map(r=><div key={r.id} style={{...KS,borderLeft:"4px solid "+C.blue,position:"relative"}}>
-      <div style={{fontWeight:900,fontSize:17,marginBottom:6}}>{r.nombre}</div>
+      <div style={{fontWeight:900,fontSize:20,marginBottom:6,display:"flex",alignItems:"center",gap:6}}><span>🏪</span><span>{(r.nombre||"").toUpperCase()}</span></div>
       <div style={{color:C.muted,fontSize:14}}>👤 {r.contacto||"—"}</div>
       <div style={{color:C.muted,fontSize:14}}>📱 {r.telefono||"—"}</div>
       <div style={{color:C.muted,fontSize:14}}>💳 {r.condicion_pago}</div>
@@ -1128,7 +1194,8 @@ function CierreCaja({user}){
     const ef=vs.reduce((a,v)=>a+(v.pago_efectivo||0),0);
     const yp=vs.reduce((a,v)=>a+(v.pago_yape||0),0);
     const tr=vs.reduce((a,v)=>a+(v.pago_transferencia||0),0);
-    const cobrado=ef+yp+tr;
+    const tj=vs.reduce((a,v)=>a+(v.pago_tarjeta||0),0);
+    const cobrado=ef+yp+tr+tj;
     const pendiente=total-cobrado;
     const porVendedor={};vs.forEach(v=>{const emp=v.empleado||"Sin vendedor";if(!porVendedor[emp])porVendedor[emp]=[];porVendedor[emp].push(v);});
     return <div style={{...KS,border:"1px solid rgba(56,189,248,0.2)",marginBottom:16}}>
@@ -1141,13 +1208,14 @@ function CierreCaja({user}){
         <div style={{display:"flex",justifyContent:"space-between",padding:"8px 0",borderBottom:"1px solid "+C.border}}><span style={{color:C.muted,fontSize:14}}>✅ Total cobrado</span><span style={{color:C.green,fontWeight:700,fontSize:15}}>S/.{cobrado.toLocaleString()}</span></div>
         {pendiente>0&&<div style={{display:"flex",justifyContent:"space-between",padding:"8px 0",borderBottom:"1px solid "+C.border}}><span style={{color:C.muted,fontSize:14}}>⏳ Pendiente</span><span style={{color:C.red,fontWeight:700,fontSize:15}}>S/.{pendiente.toLocaleString()}</span></div>}
         <div style={{margin:"14px 0 10px",color:C.muted,fontSize:11,fontWeight:700,letterSpacing:1}}>COBROS RECIBIDOS</div>
-        {[["💵 Efectivo",ef,C.green],["📱 Yape",yp,C.purple],["🏦 Transferencia",tr,C.blue]].map(([l,v,c])=><div key={l} style={{background:c+"22",border:"1px solid "+c+"44",borderRadius:10,padding:"10px 14px",marginBottom:8,display:"flex",justifyContent:"space-between"}}><span style={{color:c,fontWeight:600,fontSize:14}}>{l}</span><span style={{color:c,fontWeight:900,fontSize:16}}>S/.{v.toLocaleString()}</span></div>)}
+        {[["💵 Efectivo",ef,C.green],["📱 Yape",yp,C.purple],["🏦 Transferencia",tr,C.blue],["💳 Tarjeta",tj,C.amber]].filter(([,v])=>v>0).map(([l,v,c])=><div key={l} style={{background:c+"22",border:"1px solid "+c+"44",borderRadius:10,padding:"10px 14px",marginBottom:8,display:"flex",justifyContent:"space-between"}}><span style={{color:c,fontWeight:600,fontSize:14}}>{l}</span><span style={{color:c,fontWeight:900,fontSize:16}}>S/.{v.toLocaleString()}</span></div>)}
         <div style={{margin:"14px 0 10px",color:C.muted,fontSize:11,fontWeight:700,letterSpacing:1}}>POR VENDEDOR — QUIÉN DEBE ENTREGAR QUÉ</div>
         {Object.keys(porVendedor).sort().map(emp=>{
           const vEmp=porVendedor[emp];
           const efE=vEmp.reduce((a,v)=>a+(v.pago_efectivo||0),0);
           const ypE=vEmp.reduce((a,v)=>a+(v.pago_yape||0),0);
           const trE=vEmp.reduce((a,v)=>a+(v.pago_transferencia||0),0);
+          const tjE=vEmp.reduce((a,v)=>a+(v.pago_tarjeta||0),0);
           return <div key={emp} style={{background:"rgba(255,255,255,0.04)",border:"1px solid "+C.border,borderRadius:10,padding:"10px 12px",marginBottom:10}}>
             <div style={{display:"flex",justifyContent:"space-between",marginBottom:6}}>
               <span style={{color:C.text,fontWeight:700,fontSize:14}}>👤 {emp}</span>
@@ -1156,6 +1224,7 @@ function CierreCaja({user}){
             {efE>0&&<div style={{color:C.green,fontSize:13,fontWeight:600}}>💵 Debe entregar en efectivo: S/.{efE.toLocaleString()}</div>}
             {ypE>0&&<div style={{color:C.purple,fontSize:13}}>📱 Yape: S/.{ypE.toLocaleString()}</div>}
             {trE>0&&<div style={{color:C.blue,fontSize:13}}>🏦 Transferencia: S/.{trE.toLocaleString()}</div>}
+            {tjE>0&&<div style={{color:C.amber,fontSize:13}}>💳 Tarjeta: S/.{tjE.toLocaleString()}</div>}
             <div style={{marginTop:6}}>
               {vEmp.map((v,i)=><div key={i} style={{color:C.muted,fontSize:11}}>{fmtHora(v.created_at)&&fmtHora(v.created_at)+" · "}{v.modelo} · S/.{(v.precio_venta||0).toLocaleString()}</div>)}
             </div>
