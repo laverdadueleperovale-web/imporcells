@@ -49,7 +49,13 @@ async function dbq(t,m,b,f){
   const tx=await r.text();return tx?JSON.parse(tx):[];
 }
 const api={get:(t,f)=>dbq(t,"GET",null,f||""),post:(t,b)=>dbq(t,"POST",b,""),patch:(t,id,b)=>dbq(t,"PATCH",b,"?id=eq."+id),del:(t,id)=>dbq(t,"DELETE",null,"?id=eq."+id)};
-function fmtHora(iso){if(!iso)return"";try{const d=new Date(iso);return d.getHours().toString().padStart(2,"0")+":"+d.getMinutes().toString().padStart(2,"0");}catch(e){return"";}}
+// Perú es UTC-5 fijo (sin horario de verano). Usamos ese offset fijo en vez de
+// depender de la zona horaria del navegador/celular de cada quien — si algún
+// celular tiene mal la zona configurada, la hora mostrada sale distinta según
+// quién la mire. Con el offset fijo, todos ven la misma hora real siempre.
+function peruNow(){return new Date(Date.now()-5*60*60*1000);}
+function fmtHora(iso){if(!iso)return"";try{const d=new Date(new Date(iso).getTime()-5*60*60*1000);return d.getUTCHours().toString().padStart(2,"0")+":"+d.getUTCMinutes().toString().padStart(2,"0");}catch(e){return"";}}
+function fechaHoyPeru(){return peruNow().toISOString().substring(0,10);}
 
 const C={bg:"#0a0f1e",surface:"#111827",card:"rgba(17,24,39,0.97)",border:"rgba(99,179,237,0.15)",blue:"#38bdf8",blueDim:"rgba(56,189,248,0.12)",green:"#4ade80",greenDim:"rgba(74,222,128,0.12)",red:"#f87171",redDim:"rgba(248,113,113,0.15)",amber:"#fbbf24",amberDim:"rgba(251,191,36,0.12)",purple:"#a78bfa",purpleDim:"rgba(167,139,250,0.12)",text:"#e2e8f0",muted:"#64748b",cyan:"#38bdf8"};
 const IS={background:"rgba(255,255,255,0.06)",border:"1px solid rgba(99,179,237,0.2)",borderRadius:12,padding:"14px 16px",color:C.text,fontSize:16,outline:"none",width:"100%",WebkitAppearance:"none"};
@@ -576,7 +582,7 @@ function Entregas({user}){
   const [list,setList]=useState([]); const [dist,setDist]=useState([]); const [inv,setInv]=useState([]);
   const [loading,setLoading]=useState(true); const [show,setShow]=useState(false); const [saving,setSaving]=useState(false);
   const [fs,setFs]=useState("todos"); const [toast,setToast]=useState(null); const [showQR,setShowQR]=useState(false);
-  const [fechaFiltro,setFechaFiltro]=useState(new Date().toISOString().substring(0,10));
+  const [fechaFiltro,setFechaFiltro]=useState(fechaHoyPeru());
   const [verTodas,setVerTodas]=useState(false);
   const E={inv_id:"",dist_id:"",marca:"",modelo:"",imei:"",almacenamiento:"",precio:"",pagado:"0",metodo:"transferencia",notas:""};
   const [form,setForm]=useState(E); const ff=k=>v=>setForm(p=>({...p,[k]:v}));
@@ -686,7 +692,7 @@ function Entregas({user}){
     <div style={{...KS,marginBottom:14,display:"flex",alignItems:"center",gap:12,flexWrap:"wrap"}}>
       <div style={{flex:1,minWidth:160}}>
         <label style={LS}>Fecha</label>
-        <input style={IS} type="date" value={fechaFiltro} max={new Date().toISOString().substring(0,10)} disabled={verTodas} onChange={e=>setFechaFiltro(e.target.value)}/>
+        <input style={IS} type="date" value={fechaFiltro} max={fechaHoyPeru()} disabled={verTodas} onChange={e=>setFechaFiltro(e.target.value)}/>
       </div>
       <label style={{display:"flex",alignItems:"center",gap:8,cursor:"pointer",color:C.muted,fontSize:14}}>
         <input type="checkbox" checked={verTodas} onChange={e=>setVerTodas(e.target.checked)} style={{width:18,height:18,cursor:"pointer"}}/>
@@ -734,7 +740,7 @@ function Ventas({user}){
   const E={inv_id:"",imei:"",modelo:"",tienda:user.tienda||"NM 3",cliente:"",precio:"",efectivo:"",yape:"",transferencia:"",tarjeta:"",notas:"",accesorios:{}};
   const [form,setForm]=useState(E); const ff=k=>v=>setForm(p=>({...p,[k]:v}));
   const [accPrecios,setAccPrecios]=useState({});
-  const [fechaFiltro,setFechaFiltro]=useState(new Date().toISOString().substring(0,10));
+  const [fechaFiltro,setFechaFiltro]=useState(fechaHoyPeru());
   const [verTodas,setVerTodas]=useState(false);
   const [editSale,setEditSale]=useState(null);
   const [editForm,setEditForm]=useState({});
@@ -768,7 +774,7 @@ function Ventas({user}){
       const metodo=[ef>0?"Efectivo":"",yp>0?"Yape":"",tr>0?"Transferencia":"",tj>0?"Tarjeta":""].filter(Boolean).join(" + ")||"Efectivo";
       const accList=Object.keys(form.accesorios).filter(k=>form.accesorios[k]).map(k=>{const p=accPrecios[k]||0;return k+(p>0?" (S/."+p+")":"");}).join(", ");
       const notasFinal=[form.notas,accList?"Accesorios: "+accList:""].filter(Boolean).join(" | ");
-      await api.post("ventas",{inventario_id:form.inv_id||null,imei:form.imei,modelo:form.modelo,tienda:form.tienda,cliente:form.cliente,precio_venta:totalConAcc,pagado:paid,estado_pago:ps,metodo_pago:metodo,pago_efectivo:ef,pago_yape:yp,pago_transferencia:tr,pago_tarjeta:tj,fecha:new Date().toISOString().substring(0,10),notas:notasFinal,empleado:user.nombre});
+      await api.post("ventas",{inventario_id:form.inv_id||null,imei:form.imei,modelo:form.modelo,tienda:form.tienda,cliente:form.cliente,precio_venta:totalConAcc,pagado:paid,estado_pago:ps,metodo_pago:metodo,pago_efectivo:ef,pago_yape:yp,pago_transferencia:tr,pago_tarjeta:tj,fecha:fechaHoyPeru(),notas:notasFinal,empleado:user.nombre});
       if(form.inv_id)await api.patch("inventario",form.inv_id,{estado:"vendido",fecha_venta:new Date().toISOString()});
       setToast({t:"ok",m:"Venta registrada"});setForm(E);setAccPrecios({});setShow(false);load();
     }catch(e){setToast({t:"error",m:"Error: "+e.message});}
@@ -901,13 +907,13 @@ function Ventas({user}){
     <div style={{...KS,marginBottom:16,display:"flex",alignItems:"center",gap:12,flexWrap:"wrap"}}>
       <div style={{flex:1,minWidth:160}}>
         <label style={LS}>Fecha</label>
-        <input style={IS} type="date" value={fechaFiltro} max={new Date().toISOString().substring(0,10)} disabled={verTodas} onChange={e=>setFechaFiltro(e.target.value)}/>
+        <input style={IS} type="date" value={fechaFiltro} max={fechaHoyPeru()} disabled={verTodas} onChange={e=>setFechaFiltro(e.target.value)}/>
       </div>
       <label style={{display:"flex",alignItems:"center",gap:8,cursor:"pointer",color:C.muted,fontSize:14}}>
         <input type="checkbox" checked={verTodas} onChange={e=>setVerTodas(e.target.checked)} style={{width:18,height:18,cursor:"pointer"}}/>
         Ver todas las fechas
       </label>
-      {!verTodas&&fechaFiltro!==new Date().toISOString().substring(0,10)&&<Btn onClick={()=>setFechaFiltro(new Date().toISOString().substring(0,10))} variant="ghost" small>Hoy</Btn>}
+      {!verTodas&&fechaFiltro!==fechaHoyPeru()&&<Btn onClick={()=>setFechaFiltro(fechaHoyPeru())} variant="ghost" small>Hoy</Btn>}
     </div>
     {show&&<div style={{...KS,border:"2px solid "+C.green,marginBottom:16}} className="su">
       <div style={{color:C.green,fontWeight:800,fontSize:17,marginBottom:14}}>💰 Nueva Venta</div>
@@ -1028,7 +1034,7 @@ function Deudores({user}){
   const [entregas,setEntregas]=useState([]); const [dist,setDist]=useState([]);
   const [loading,setLoading]=useState(true); const [toast,setToast]=useState(null);
   const [search,setSearch]=useState(""); const [expandido,setExpandido]=useState({}); const [abonos,setAbonos]=useState({});
-  const today=new Date().toISOString().substring(0,10);
+  const today=fechaHoyPeru();
   async function load(){setLoading(true);try{const [e,d]=await Promise.all([api.get("entregas","?estado_pago=neq.pagado&estado_pago=neq.devuelto&order=fecha_entrega.asc"),api.get("revendedores","?order=nombre.asc")]);setEntregas(e);setDist(d);}catch(e){setToast({t:"error",m:"Error"});}setLoading(false);}
   useEffect(()=>{load();},[]);
   async function abonar(distId,monto){
@@ -1172,7 +1178,7 @@ function Dashboard({user}){
 // ─── CIERRE DE CAJA ─────────────────────────────────────────────────────────
 function CierreCaja({user}){
   const [ventas,setVentas]=useState([]); const [entregas,setEntregas]=useState([]); const [loading,setLoading]=useState(true);
-  const [fecha,setFecha]=useState(new Date().toISOString().substring(0,10)); const [cerrando,setCerrando]=useState({});
+  const [fecha,setFecha]=useState(fechaHoyPeru()); const [cerrando,setCerrando]=useState({});
   const isAdmin=user.rol==="admin"; const esA6=(user.tienda||"")==="NM A6";
   const tiendas=isAdmin?TIENDAS_EMP:[user.tienda||"NM 3"];
   async function load(){setLoading(true);try{const [v,e]=await Promise.all([api.get("ventas","?order=created_at.desc"),api.get("entregas","?order=created_at.desc")]);setVentas(v);setEntregas(e);}catch(e){}setLoading(false);}
@@ -1183,7 +1189,8 @@ function CierreCaja({user}){
     if(!confirm("¿Cerrar caja de "+tienda+" del "+fecha+"?"))return;
     setCerrando(p=>({...p,[tienda]:true}));
     const vs=ventasDia(tienda);const tot=vs.reduce((a,v)=>a+(v.precio_venta||0),0);const cob=vs.reduce((a,v)=>a+(v.pagado||0),0);
-    const horaCierre=fmtHora(new Date().toISOString());
+    const ahoraPeru=peruNow();
+    const horaCierre=ahoraPeru.getUTCHours().toString().padStart(2,"0")+":"+ahoraPeru.getUTCMinutes().toString().padStart(2,"0");
     try{await api.post("auditoria",{usuario:user.nombre,accion:"CIERRE DE CAJA - "+tienda,tabla:"ventas",detalle:"Fecha: "+fecha+" | Hora de cierre: "+horaCierre+" | Tienda: "+tienda+" | Total: S/."+tot+" | Cobrado: S/."+cob+" | Ventas: "+vs.length});}catch(e){}
     setCerrando(p=>({...p,[tienda]:false}));
     alert("✅ Caja "+tienda+" cerrada correctamente para el "+fecha);
@@ -1246,7 +1253,7 @@ function CierreCaja({user}){
     </div>
     <div style={{...KS,marginBottom:16}}>
       <label style={LS}>Fecha</label>
-      <input style={IS} type="date" value={fecha} max={new Date().toISOString().substring(0,10)} onChange={e=>setFecha(e.target.value)}/>
+      <input style={IS} type="date" value={fecha} max={fechaHoyPeru()} onChange={e=>setFecha(e.target.value)}/>
     </div>
     {loading?<Spin/>:<>
       {tiendas.map(t=><CajaCard key={t} tienda={t}/>)}
