@@ -124,7 +124,18 @@ function QRScanner({onScan,onClose}){
   }
   useEffect(()=>{
     let cancelled=false;
-    const scanner=new Html5Qrcode("qr-web-box");
+    const scanner=new Html5Qrcode("qr-web-box",{
+      formatsToSupport:[
+        Html5QrcodeSupportedFormats.CODE_128,
+        Html5QrcodeSupportedFormats.CODE_39,
+        Html5QrcodeSupportedFormats.EAN_13,
+        Html5QrcodeSupportedFormats.EAN_8,
+        Html5QrcodeSupportedFormats.UPC_A,
+        Html5QrcodeSupportedFormats.ITF,
+        Html5QrcodeSupportedFormats.QR_CODE,
+      ],
+      verbose:false,
+    });
     scannerRef.current=scanner;
     const onDetect=text=>{
       const clean=text.replace(/\s/g,"");
@@ -667,7 +678,6 @@ function Entregas({user}){
 
   function enFecha(d){
     if(verTodas)return true;
-    if(d.estado_pago==="pendiente"||d.estado_pago==="parcial")return true;
     const f=(d.fecha_entrega||"").substring(0,10);
     return f===fechaFiltro;
   }
@@ -725,13 +735,13 @@ function Entregas({user}){
         <input type="checkbox" checked={verTodas} onChange={e=>setVerTodas(e.target.checked)} style={{width:18,height:18,cursor:"pointer"}}/>
         Ver todas las fechas
       </label>
-      <div style={{color:C.muted,fontSize:11,fontStyle:"italic",width:"100%"}}>Las pendientes de cobro siempre se muestran, sin importar la fecha</div>
+      <div style={{color:C.muted,fontSize:11,fontStyle:"italic",width:"100%"}}>Para ver todo lo pendiente de cobro sin importar la fecha, revisá Deudores</div>
     </div>
     <div style={{display:"flex",gap:8,marginBottom:14,overflowX:"auto"}}>
       {["todos","pendiente","parcial","pagado"].map(f=><button key={f} onClick={()=>setFs(f)} style={{padding:"9px 16px",borderRadius:99,border:"1px solid "+(fs===f?C.blue:C.border),background:fs===f?"rgba(56,189,248,0.15)":"rgba(255,255,255,0.05)",color:fs===f?C.blue:C.muted,cursor:"pointer",fontSize:13,fontWeight:600,whiteSpace:"nowrap"}}>{f.charAt(0).toUpperCase()+f.slice(1)}</button>)}
       <button onClick={load} style={{padding:"9px 14px",borderRadius:99,border:"1px solid "+C.border,background:"rgba(255,255,255,0.05)",color:C.muted,cursor:"pointer"}}>🔄</button>
     </div>
-    {loading?<Spin/>:filtered.length===0?<div style={{textAlign:"center",color:C.muted,padding:40}}>{verTodas?"Sin entregas":"Sin entregas nuevas este día"}</div>:filtered.map(d=>{
+    {loading?<Spin/>:filtered.length===0?<div style={{textAlign:"center",color:C.muted,padding:40}}>{verTodas?"Sin entregas":"Sin entregas este día"}</div>:filtered.map(d=>{
       const falta=(d.precio||0)-(d.pagado||0);
       const color=d.estado_pago==="pagado"?C.green:d.estado_pago==="parcial"?C.amber:C.red;
       const phone=(d.revendedor_telefono||"");
