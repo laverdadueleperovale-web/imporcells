@@ -178,15 +178,13 @@ function QRScanner({onScan,onClose}){
     tryStart();
     return()=>{cancelled=true;scanner.stop().catch(()=>{});};
   },[]);
-  const [closing,setClosing]=useState(false);
   function reset(){foundRef.current=[];setFound([]);setRejected(null);setRejectedHint(null);}
-  async function confirm(){
-    if(found.length===0||closing)return;
-    setClosing(true);
-    // Esperamos a que la cámara termine de cerrarse del todo antes de continuar —
-    // cerrarla "a la fuerza" mientras todavía se está deteniendo es lo que causaba
-    // que Safari en iPhone se colgara y reiniciara la página.
-    try{ await scannerRef.current.stop(); }catch(e){}
+  function confirm(){
+    if(found.length===0)return;
+    // No esperamos manualmente a que la cámara se apague acá — dejamos que se
+    // cierre sola cuando el componente se desmonte (abajo, en el cleanup del
+    // useEffect). Esperar esa señal manualmente parece ser lo que causaba el
+    // cuelgue en iPhone.
     onScan(found.length>=2?found:found[0]);
   }
   return <div style={{position:"fixed",inset:0,background:"rgba(0,0,0,0.95)",zIndex:9999,display:"flex",flexDirection:"column"}}>
@@ -216,7 +214,7 @@ function QRScanner({onScan,onClose}){
         {found.length===1&&<div style={{color:C.muted,fontSize:12,marginTop:8}}>Seguí apuntando si hay un segundo IMEI, o confirmá con este solo.</div>}
         <div style={{display:"flex",gap:10,marginTop:14}}>
           <button onClick={reset} style={{flex:1,padding:12,borderRadius:12,border:"1px solid "+C.muted,background:"transparent",color:C.muted,fontWeight:700,cursor:"pointer"}}>Reintentar</button>
-          <button onClick={confirm} disabled={closing} style={{flex:1,padding:12,borderRadius:12,border:"none",background:closing?"#4b5563":C.green,color:"#0a0f1e",fontWeight:800,cursor:closing?"default":"pointer"}}>{closing?"⏳ Cerrando cámara...":(found.length>=2?"✓ Usar estos 2 IMEIs":"✓ Usar este IMEI")}</button>
+          <button onClick={confirm} style={{flex:1,padding:12,borderRadius:12,border:"none",background:C.green,color:"#0a0f1e",fontWeight:800,cursor:"pointer"}}>{found.length>=2?"✓ Usar estos 2 IMEIs":"✓ Usar este IMEI"}</button>
         </div>
       </div>}
     </div>
