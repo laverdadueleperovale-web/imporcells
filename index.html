@@ -178,10 +178,15 @@ function QRScanner({onScan,onClose}){
     tryStart();
     return()=>{cancelled=true;scanner.stop().catch(()=>{});};
   },[]);
+  const [closing,setClosing]=useState(false);
   function reset(){foundRef.current=[];setFound([]);setRejected(null);setRejectedHint(null);}
-  function confirm(){
-    if(found.length===0)return;
-    scannerRef.current&&scannerRef.current.stop().catch(()=>{});
+  async function confirm(){
+    if(found.length===0||closing)return;
+    setClosing(true);
+    // Esperamos a que la cámara termine de cerrarse del todo antes de continuar —
+    // cerrarla "a la fuerza" mientras todavía se está deteniendo es lo que causaba
+    // que Safari en iPhone se colgara y reiniciara la página.
+    try{ await scannerRef.current.stop(); }catch(e){}
     onScan(found.length>=2?found:found[0]);
   }
   return <div style={{position:"fixed",inset:0,background:"rgba(0,0,0,0.95)",zIndex:9999,display:"flex",flexDirection:"column"}}>
@@ -211,7 +216,7 @@ function QRScanner({onScan,onClose}){
         {found.length===1&&<div style={{color:C.muted,fontSize:12,marginTop:8}}>Seguí apuntando si hay un segundo IMEI, o confirmá con este solo.</div>}
         <div style={{display:"flex",gap:10,marginTop:14}}>
           <button onClick={reset} style={{flex:1,padding:12,borderRadius:12,border:"1px solid "+C.muted,background:"transparent",color:C.muted,fontWeight:700,cursor:"pointer"}}>Reintentar</button>
-          <button onClick={confirm} style={{flex:1,padding:12,borderRadius:12,border:"none",background:C.green,color:"#0a0f1e",fontWeight:800,cursor:"pointer"}}>{found.length>=2?"✓ Usar estos 2 IMEIs":"✓ Usar este IMEI"}</button>
+          <button onClick={confirm} disabled={closing} style={{flex:1,padding:12,borderRadius:12,border:"none",background:closing?"#4b5563":C.green,color:"#0a0f1e",fontWeight:800,cursor:closing?"default":"pointer"}}>{closing?"⏳ Cerrando cámara...":(found.length>=2?"✓ Usar estos 2 IMEIs":"✓ Usar este IMEI")}</button>
         </div>
       </div>}
     </div>
@@ -1403,8 +1408,19 @@ function Usuarios(){
 }
 
 function App(){
-  const [user,setUser]=useState(null); const [tab,setTab]=useState("dashboard");
-  if(!user)return <div style={{display:"flex",flexDirection:"column",height:"100vh"}}><Login onLogin={u=>{setUser(u);setTab(u.rol==="admin"?"dashboard":"inventario");}}/></div>;
+  const [user,setUser]=useState(()=>{
+    try{const saved=localStorage.getItem("importcells_user");return saved?JSON.parse(saved):null;}catch(e){return null;}
+  });
+  const [tab,setTab]=useState("dashboard");
+  function login(u){
+    setUser(u);setTab(u.rol==="admin"?"dashboard":"inventario");
+    try{localStorage.setItem("importcells_user",JSON.stringify(u));}catch(e){}
+  }
+  function logout(){
+    setUser(null);
+    try{localStorage.removeItem("importcells_user");}catch(e){}
+  }
+  if(!user)return <div style={{display:"flex",flexDirection:"column",height:"100vh"}}><Login onLogin={login}/></div>;
   const isAdmin=user.rol==="admin";
   const allTabs=[
     {id:"dashboard",label:"Inicio",icon:"📊",roles:["admin"]},
@@ -1428,7 +1444,7 @@ function App(){
       <div style={{display:"flex",alignItems:"center",gap:8}}>
         {user.tienda&&<span style={{color:C.muted,fontSize:12}}>{user.tienda}</span>}
         <span style={{color:C.muted,fontSize:13}}>{user.nombre}</span>
-        <button onClick={()=>setUser(null)} style={{background:C.redDim,border:"1px solid rgba(248,113,113,0.3)",borderRadius:8,padding:"6px 12px",color:C.red,cursor:"pointer",fontSize:13,fontWeight:700}}>Salir</button>
+        <button onClick={logout} style={{background:C.redDim,border:"1px solid rgba(248,113,113,0.3)",borderRadius:8,padding:"6px 12px",color:C.red,cursor:"pointer",fontSize:13,fontWeight:700}}>Salir</button>
       </div>
     </div>
     <div className="app-content" style={{flex:1,overflow:"hidden",display:"flex",flexDirection:"column"}}>
