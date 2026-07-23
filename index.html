@@ -1,1444 +1,269 @@
-<!DOCTYPE html>
-<html lang="es">
-<head>
-<meta charset="UTF-8"/>
-<meta name="viewport" content="width=device-width, initial-scale=1.0, maximum-scale=1.0, user-scalable=no"/>
-<meta name="apple-mobile-web-app-capable" content="yes"/>
-<meta name="mobile-web-app-capable" content="yes"/>
-<meta name="apple-mobile-web-app-title" content="Importcells"/>
-<meta name="theme-color" content="#0a0f1e"/>
-<link rel="apple-touch-icon" href="icons/icon-180.png"/>
-<link rel="icon" type="image/png" sizes="32x32" href="icons/icon-32.png"/>
-<link rel="icon" type="image/png" sizes="16x16" href="icons/icon-16.png"/>
-<link rel="manifest" href="manifest.json"/>
-<title>Importcells</title>
-<script src="https://cdnjs.cloudflare.com/ajax/libs/react/18.2.0/umd/react.production.min.js"></script>
-<script src="https://cdnjs.cloudflare.com/ajax/libs/react-dom/18.2.0/umd/react-dom.production.min.js"></script>
-<script src="https://cdnjs.cloudflare.com/ajax/libs/babel-standalone/7.23.2/babel.min.js"></script>
-<script src="https://unpkg.com/html5-qrcode@2.3.8/html5-qrcode.min.js"></script>
-<style>
-*{box-sizing:border-box;margin:0;padding:0;-webkit-tap-highlight-color:transparent;}
-html,body{height:100%;background:#0a0f1e;color:#e2e8f0;font-family:-apple-system,'Segoe UI',sans-serif;overflow:hidden;font-size:16px;}
-#root{height:100%;display:flex;flex-direction:column;}
-input,select,button,textarea{font-family:inherit;}
-@keyframes spin{to{transform:rotate(360deg);}}
-@keyframes slideUp{from{transform:translateY(20px);opacity:0;}to{transform:translateY(0);opacity:1;}}
-.su{animation:slideUp 0.2s ease;}
-::-webkit-scrollbar{width:0;}
-input[type=number]::-webkit-outer-spin-button,input[type=number]::-webkit-inner-spin-button{-webkit-appearance:none;}
-@media (min-width:900px){
-  html,body{overflow:auto;}
-  .app-header{order:0;}
-  .app-nav{order:1;border-top:none !important;border-bottom:1px solid rgba(99,179,237,0.15);flex-direction:row;justify-content:center;padding-bottom:10px !important;padding-top:6px;gap:4px;}
-  .app-content{order:2;max-width:1200px;margin:0 auto;width:100%;}
-  .app-nav-btn{flex:none !important;flex-direction:row !important;min-height:auto !important;padding:10px 20px !important;gap:8px !important;}
-  .app-nav-btn .nav-icon{font-size:19px !important;}
-  .app-nav-underline{display:none !important;}
-}
-</style>
-</head>
-<body>
-<div id="root"></div>
-<script type="text/babel">
-const {useState,useEffect,useRef,useCallback}=React;
-const SURL="https://jynutowszhieupuatmfc.supabase.co";
-const SKEY="eyJhbGciOiJIUzI1NiIsInR5cCI6IkpXVCJ9.eyJpc3MiOiJzdXBhYmFzZSIsInJlZiI6Imp5bnV0b3dzemhpZXVwdWF0bWZjIiwicm9sZSI6ImFub24iLCJpYXQiOjE3ODI1MTQ5NzYsImV4cCI6MjA5ODA5MDk3Nn0.MdMJJAVnYgeQweRl_8Ef2eWj1RdOW78CVprxE6-XPJc";
-async function dbq(t,m,b,f){
-  const r=await fetch(SURL+"/rest/v1/"+t+(f||""),{method:m||"GET",headers:{"apikey":SKEY,"Authorization":"Bearer "+SKEY,"Content-Type":"application/json","Prefer":"return=representation"},body:b?JSON.stringify(b):null});
-  if(!r.ok)throw new Error(await r.text());
-  const tx=await r.text();return tx?JSON.parse(tx):[];
-}
-const api={get:(t,f)=>dbq(t,"GET",null,f||""),post:(t,b)=>dbq(t,"POST",b,""),patch:(t,id,b)=>dbq(t,"PATCH",b,"?id=eq."+id),del:(t,id)=>dbq(t,"DELETE",null,"?id=eq."+id)};
-// Perú es UTC-5 fijo (sin horario de verano). Usamos ese offset fijo en vez de
-// depender de la zona horaria del navegador/celular de cada quien — si algún
-// celular tiene mal la zona configurada, la hora mostrada sale distinta según
-// quién la mire. Con el offset fijo, todos ven la misma hora real siempre.
-function peruNow(){return new Date(Date.now()-5*60*60*1000);}
-function fmtHora(iso){if(!iso)return"";try{const d=new Date(new Date(iso).getTime()-5*60*60*1000);return d.getUTCHours().toString().padStart(2,"0")+":"+d.getUTCMinutes().toString().padStart(2,"0");}catch(e){return"";}}
-function fechaHoyPeru(){return peruNow().toISOString().substring(0,10);}
+import 'package:flutter/material.dart';
+import 'package:mobile_scanner/mobile_scanner.dart';
 
-const C={bg:"#0a0f1e",surface:"#111827",card:"rgba(17,24,39,0.97)",border:"rgba(99,179,237,0.15)",blue:"#38bdf8",blueDim:"rgba(56,189,248,0.12)",green:"#4ade80",greenDim:"rgba(74,222,128,0.12)",red:"#f87171",redDim:"rgba(248,113,113,0.15)",amber:"#fbbf24",amberDim:"rgba(251,191,36,0.12)",purple:"#a78bfa",purpleDim:"rgba(167,139,250,0.12)",text:"#e2e8f0",muted:"#64748b",cyan:"#38bdf8"};
-const IS={background:"rgba(255,255,255,0.06)",border:"1px solid rgba(99,179,237,0.2)",borderRadius:12,padding:"14px 16px",color:C.text,fontSize:16,outline:"none",width:"100%",WebkitAppearance:"none"};
-const LS={color:C.muted,fontSize:12,fontWeight:600,marginBottom:6,display:"block",textTransform:"uppercase",letterSpacing:"0.5px"};
-const KS={background:C.card,border:"1px solid "+C.border,borderRadius:16,padding:18,marginBottom:14};
-const TIENDAS=["Almacén Central","NM 3","NM A6","NM D5","PD C","PD S"];
-const TIENDAS_EMP=["NM 3","NM A6","NM D5","PD C","PD S"];
-const MARCAS=["Apple","Samsung","Xiaomi","Motorola","Huawei","OnePlus","Google","Sony","Realme","OPPO","Vivo","Nokia","Honor","Tecno","Infinix"];
-const ALMS=["32GB","64GB","128GB","256GB","512GB","1TB"];
-const RAMS=["2GB","3GB","4GB","6GB","8GB","12GB","16GB","24GB"];
-const COLORES=["Negro","Blanco","Azul","Rojo","Verde","Morado","Rosa","Dorado","Plateado","Gris","Titanio","Celeste","Naranja"];
-const ACCS=["Funda","Protector de pantalla","Cargador","Audífonos","Cable USB","Otros"];
-const INIT_USERS=[
-  {nombre:"Anthony",username:"anthony",password:"tonny@",rol:"admin",tienda:null},
-  {nombre:"Linet",username:"linet",password:"linet123",rol:"admin",tienda:null},
-  {nombre:"Jeremy",username:"jeremy",password:"jere123",rol:"empleado",tienda:null},
-  {nombre:"Alessandro",username:"alessandro",password:"ales1234",rol:"empleado",tienda:null},
-  {nombre:"Mili",username:"mili",password:"mili12",rol:"empleado",tienda:null},
-  {nombre:"Almacén Central",username:"almacen",password:"almacen123",rol:"almacen",tienda:"Almacén Central"},
-  {nombre:"NM 3",username:"nm3",password:"nm3123",rol:"tienda",tienda:"NM 3"},
-  {nombre:"NM A6",username:"nma6",password:"nma6123",rol:"tienda",tienda:"NM A6"},
-  {nombre:"NM D5",username:"nmd5",password:"nmd5123",rol:"tienda",tienda:"NM D5"},
-  {nombre:"PD C",username:"pdc",password:"pdc123",rol:"tienda",tienda:"PD C"},
-  {nombre:"PD S",username:"pds",password:"pds123",rol:"tienda",tienda:"PD S"},
-];
+class QRScannerScreen extends StatefulWidget {
+  const QRScannerScreen({super.key});
 
-function badge(type){
-  const m={pagado:[C.greenDim,C.green],pendiente:[C.redDim,C.red],parcial:[C.amberDim,C.amber],disponible:[C.blueDim,C.blue],vendido:[C.redDim,C.red],entregado:[C.amberDim,C.amber],devuelto:[C.purpleDim,C.purple],anulado:[C.redDim,C.red],registrado:[C.greenDim,C.green],libre:[C.blueDim,C.blue]};
-  const [bg,color]=m[type]||[C.bg,C.muted];
-  return{background:bg,color,padding:"4px 12px",borderRadius:99,fontSize:12,fontWeight:700,display:"inline-block",border:"1px solid "+color+"44"};
+  @override
+  State<QRScannerScreen> createState() => _QRScannerScreenState();
 }
 
-function Btn({children,onClick,variant="primary",full,small,disabled,style={}}){
-  const v={primary:{background:C.blue,color:"#0a0f1e",border:"none"},ghost:{background:"rgba(255,255,255,0.06)",color:C.muted,border:"1px solid rgba(99,179,237,0.2)"},success:{background:C.green,color:"#0a0f1e",border:"none"},danger:{background:C.red,color:"#fff",border:"none"},amber:{background:C.amber,color:"#000",border:"none"},wa:{background:"#25d366",color:"#fff",border:"none"}};
-  return <button onClick={onClick} disabled={disabled} style={{...v[variant],padding:small?"11px 18px":"15px 22px",borderRadius:14,cursor:"pointer",fontWeight:700,fontSize:small?14:16,width:full?"100%":"auto",opacity:disabled?0.6:1,display:"flex",alignItems:"center",justifyContent:"center",gap:8,...style}}>{children}</button>;
-}
-function Spin(){return <div style={{display:"flex",alignItems:"center",justifyContent:"center",padding:48}}><div style={{width:36,height:36,border:"3px solid "+C.border,borderTop:"3px solid "+C.blue,borderRadius:"50%",animation:"spin 0.8s linear infinite"}}/></div>;}
-function Toast({msg,onClose}){
-  useEffect(()=>{if(msg){const t=setTimeout(onClose,3500);return()=>clearTimeout(t);}});
-  if(!msg)return null;
-  return <div style={{position:"fixed",top:16,left:16,right:16,zIndex:9999,background:msg.t==="ok"?C.green:C.red,color:"#fff",borderRadius:14,padding:"14px 18px",fontSize:15,fontWeight:600,boxShadow:"0 8px 32px rgba(0,0,0,0.3)"}} className="su">{msg.t==="ok"?"✅ ":"❌ "}{msg.m}</div>;
-}
-function Field({label,value,onChange,type,placeholder,options}){
-  if(options)return <div><label style={LS}>{label}</label><select style={{...IS,appearance:"none"}} value={value||""} onChange={e=>onChange&&onChange(e.target.value)}>{options.map(o=><option key={o.v||o} value={o.v||o}>{o.l||o}</option>)}</select></div>;
-  return <div><label style={LS}>{label}</label><input style={IS} type={type||"text"} value={value||""} placeholder={placeholder} onChange={e=>onChange&&onChange(e.target.value)}/></div>;
-}
+class _QRScannerScreenState extends State<QRScannerScreen> {
+  final MobileScannerController controller = MobileScannerController(
+    formats: const [
+      BarcodeFormat.code128,
+      BarcodeFormat.code39,
+      BarcodeFormat.ean13,
+      BarcodeFormat.upcA,
+      BarcodeFormat.itf,
+      BarcodeFormat.qrCode,
+    ],
+    detectionSpeed: DetectionSpeed.normal,
+  );
 
-function QRScanner({onScan,onClose}){
-  const [found,setFound]=useState([]); // hasta 2 IMEIs válidos detectados
-  const [rejected,setRejected]=useState(null);
-  const [rejectedHint,setRejectedHint]=useState(null);
-  const [camError,setCamError]=useState(null);
-  const [starting,setStarting]=useState(true);
-  const scannerRef=useRef(null);
-  const foundRef=useRef([]);
-  // Igual que en Flutter: si es 15 dígitos limpio, lo acepta. Si es un número
-  // larguísimo de puros dígitos (20+, como el EID de eSIM de Samsung, 32 dígitos),
-  // NO se toca — ahí no hay ningún IMEI real adentro, inventar uno sería peligroso.
-  // Si mezcla texto con el IMEI, ahí sí extrae los 15 dígitos de adentro.
-  function extractImei(val){
-    const clean=val.replace(/\s/g,"");
-    if(/^\d{15}$/.test(clean))return clean;
-    if(/^\d+$/.test(clean)&&clean.length>=20)return null;
-    const m=clean.match(/\d{15}/);
-    return m?m[0]:null;
+  // Lista de IMEIs válidos (15 dígitos) detectados, en el orden en que aparecieron.
+  // Guardamos hasta 2 — la mayoría de teléfonos dual SIM traen exactamente 2 pegados en la etiqueta.
+  final List<String> foundImeis = [];
+  String? lastRejected;
+  String? lastRejectedHint;
+  bool confirmed = false;
+
+  /// Intenta sacar un IMEI válido (15 dígitos) de lo que leyó el escáner.
+  /// - Si es un número limpio de 15 dígitos → lo acepta tal cual (caso normal).
+  /// - Si es un número larguísimo de puros dígitos (20+, como el EID de eSIM de Samsung,
+  ///   que tiene 32) → NO se toca; ahí no hay ningún IMEI real escondido adentro, sacar
+  ///   15 dígitos cualquiera sería inventar un IMEI falso. Se avisa qué es en vez de aceptarlo.
+  /// - Si mezcla el IMEI con texto/etiquetas (ej. "IMEI1:123456789012345") → ahí sí se
+  ///   extrae el tramo de 15 dígitos de adentro, porque ahí el IMEI real está presente.
+  String? extractImei(String val) {
+    final clean = val.replaceAll(RegExp(r'\s'), '');
+    if (RegExp(r'^\d{15}$').hasMatch(clean)) return clean;
+    if (RegExp(r'^\d+$').hasMatch(clean) && clean.length >= 20) return null; // probable EID u otro ID largo
+    final match = RegExp(r'\d{15}').firstMatch(clean);
+    return match?.group(0);
   }
-  useEffect(()=>{
-    let cancelled=false;
-    const scanner=new Html5Qrcode("qr-web-box");
-    scannerRef.current=scanner;
-    const onDetect=text=>{
-      const clean=text.replace(/\s/g,"");
-      const imei=extractImei(clean);
-      if(imei){
-        if(foundRef.current.length<2&&!foundRef.current.includes(imei)){
-          foundRef.current=[...foundRef.current,imei];
-          setFound(foundRef.current);
-          setRejected(null);
-          setRejectedHint(null);
+
+  void _onDetect(BarcodeCapture capture) {
+    if (confirmed) return;
+    bool changed = false;
+    for (final barcode in capture.barcodes) {
+      final val = barcode.rawValue ?? '';
+      if (val.isEmpty) continue;
+      final clean = val.replaceAll(RegExp(r'\s'), '');
+      final imei = extractImei(clean);
+      if (imei != null) {
+        if (!foundImeis.contains(imei) && foundImeis.length < 2) {
+          foundImeis.add(imei);
+          changed = true;
         }
-      }else if(foundRef.current.length===0){
-        setRejected(clean.length>20?clean.substring(0,20)+"...":clean);
-        setRejectedHint(/^\d+$/.test(clean)&&clean.length>=20?"Eso es el EID (identificador eSIM), no el IMEI — buscá la barra de código que dice 'IMEI 1'.":null);
-      }
-    };
-    async function tryStart(){
-      setCamError(null);setStarting(true);
-      // Intento 1: pedir directamente la cámara trasera
-      try{
-        await scanner.start({facingMode:"environment"},{fps:10,qrbox:{width:300,height:160}},onDetect,()=>{});
-        if(!cancelled)setStarting(false);
-        return;
-      }catch(e1){ if(cancelled)return; }
-      // Intento 2 (fallback, común en iPhone/Safari): listar cámaras disponibles y usar la última (suele ser la trasera)
-      try{
-        const cams=await Html5Qrcode.getCameras();
-        if(!cams||cams.length===0)throw new Error("No se encontró ninguna cámara disponible.");
-        const cam=cams[cams.length-1];
-        await scanner.start({deviceId:{exact:cam.id}},{fps:10,qrbox:{width:300,height:160}},onDetect,()=>{});
-        if(!cancelled)setStarting(false);
-        return;
-      }catch(e2){
-        if(!cancelled){
-          setStarting(false);
-          setCamError((e2&&e2.message)||"No se pudo activar la cámara. Revisá que le diste permiso de cámara a Safari en Ajustes.");
-        }
+      } else if (foundImeis.isEmpty) {
+        // Solo mostramos el "detectado pero no es IMEI" cuando aún no encontramos ningún IMEI válido,
+        // para no distraer una vez que ya vamos por buen camino.
+        lastRejected = clean.length > 20 ? clean.substring(0, 20) + '...' : clean;
+        lastRejectedHint = (RegExp(r'^\d+$').hasMatch(clean) && clean.length >= 20)
+            ? "Eso es el EID (identificador eSIM), no el IMEI — buscá la barra de código que dice 'IMEI 1'."
+            : null;
+        changed = true;
       }
     }
-    tryStart();
-    return()=>{cancelled=true;scanner.stop().catch(()=>{});};
-  },[]);
-  function reset(){foundRef.current=[];setFound([]);setRejected(null);setRejectedHint(null);}
-  function confirm(){
-    if(found.length===0)return;
-    scannerRef.current&&scannerRef.current.stop().catch(()=>{});
-    onScan(found.length>=2?found:found[0]);
+    if (changed) setState(() {});
   }
-  return <div style={{position:"fixed",inset:0,background:"rgba(0,0,0,0.95)",zIndex:9999,display:"flex",flexDirection:"column"}}>
-    <div style={{padding:"16px 20px",display:"flex",alignItems:"center",justifyContent:"space-between",background:"rgba(0,0,0,0.5)"}}>
-      <span style={{color:"#fff",fontWeight:800,fontSize:18}}>⬛ Escanear IMEI (15 dígitos)</span>
-      <button onClick={onClose} style={{background:"rgba(255,255,255,0.15)",border:"none",color:"#fff",padding:"8px 18px",borderRadius:99,cursor:"pointer",fontSize:15,fontWeight:700}}>✕</button>
-    </div>
-    <div style={{flex:1,display:"flex",flexDirection:"column",alignItems:"center",justifyContent:"center",gap:16,padding:16}}>
-      <div id="qr-web-box" style={{width:"90vw",maxWidth:380,borderRadius:16,overflow:"hidden",border:"3px solid "+(found.length>0?C.green:C.blue)}}/>
-      {starting&&!camError&&<div style={{color:"rgba(255,255,255,0.7)",fontSize:14,textAlign:"center"}}>Activando cámara...</div>}
-      {camError&&<div style={{background:C.redDim,border:"1px solid "+C.red,borderRadius:16,padding:18,width:"90vw",maxWidth:380,textAlign:"center"}}>
-        <div style={{color:C.red,fontWeight:800,marginBottom:6}}>⚠️ No se pudo abrir la cámara</div>
-        <div style={{color:C.text,fontSize:13,marginBottom:10}}>{camError}</div>
-        <div style={{color:C.muted,fontSize:12}}>En iPhone: Ajustes → Safari → Cámara → Permitir. Luego recargá la página.</div>
-      </div>}
-      {found.length===0&&!starting&&!camError&&<div style={{color:"rgba(255,255,255,0.7)",fontSize:14,textAlign:"center"}}>Apuntá al código de barras del IMEI<br/>Solo acepta 15 dígitos numéricos<br/>Si hay 2 (dual SIM), apuntá a ambos de seguido</div>}
-      {found.length===0&&rejected&&<div style={{color:C.amber,fontSize:13,textAlign:"center"}}>⚠️ Detectado: {rejected}<br/>{rejectedHint||"No es IMEI — seguí buscando el de 15 dígitos"}</div>}
-      {found.length>0&&<div style={{background:C.card,border:"2px solid "+C.green,borderRadius:16,padding:18,width:"90vw",maxWidth:380}}>
-        <div style={{color:C.muted,fontSize:12,marginBottom:8}}>{found.length>=2?"✅ 2 IMEIs detectados:":"✅ IMEI detectado:"}</div>
-        {found.map((f,i)=><div key={i} style={{marginBottom:i<found.length-1?10:0}}>
-          {found.length>=2&&<div style={{color:C.muted,fontSize:11}}>IMEI {i+1}</div>}
-          <div style={{color:C.green,fontSize:20,fontWeight:900,fontFamily:"monospace",letterSpacing:2}}>{f}</div>
-        </div>)}
-        {found.length===1&&<div style={{color:C.muted,fontSize:12,marginTop:8}}>Seguí apuntando si hay un segundo IMEI, o confirmá con este solo.</div>}
-        <div style={{display:"flex",gap:10,marginTop:14}}>
-          <button onClick={reset} style={{flex:1,padding:12,borderRadius:12,border:"1px solid "+C.muted,background:"transparent",color:C.muted,fontWeight:700,cursor:"pointer"}}>Reintentar</button>
-          <button onClick={confirm} style={{flex:1,padding:12,borderRadius:12,border:"none",background:C.green,color:"#0a0f1e",fontWeight:800,cursor:"pointer"}}>{found.length>=2?"✓ Usar estos 2 IMEIs":"✓ Usar este IMEI"}</button>
-        </div>
-      </div>}
-    </div>
-  </div>;
+
+  void _confirm() {
+    if (foundImeis.isEmpty) return;
+    confirmed = true;
+    controller.stop();
+    // Si encontró 2, devolvemos una lista con ambos. Si encontró solo 1, devolvemos el String como antes
+    // (mantiene compatibilidad con quien solo espera un IMEI).
+    if (foundImeis.length >= 2) {
+      Navigator.pop(context, List<String>.from(foundImeis));
+    } else {
+      Navigator.pop(context, foundImeis.first);
+    }
+  }
+
+  void _reset() {
+    setState(() {
+      foundImeis.clear();
+      lastRejected = null;
+      lastRejectedHint = null;
+    });
+  }
+
+  @override
+  void dispose() {
+    controller.dispose();
+    super.dispose();
+  }
+
+  @override
+  Widget build(BuildContext context) {
+    return Scaffold(
+      backgroundColor: Colors.black,
+      appBar: AppBar(
+        backgroundColor: Colors.black,
+        title: const Text("Escanear IMEI", style: TextStyle(color: Colors.white, fontWeight: FontWeight.bold)),
+        iconTheme: const IconThemeData(color: Colors.white),
+        actions: [
+          IconButton(
+            icon: const Icon(Icons.flash_on, color: Colors.white),
+            onPressed: () => controller.toggleTorch(),
+            tooltip: "Flash",
+          ),
+        ],
+      ),
+      body: Column(
+        children: [
+          // Instrucción
+          Container(
+            width: double.infinity,
+            color: const Color(0xFF1E293B),
+            padding: const EdgeInsets.symmetric(horizontal: 16, vertical: 12),
+            child: const Text(
+              "📱 Apuntá al código de barras del IMEI\nEl IMEI tiene exactamente 15 dígitos\nSi hay 2 (dual SIM), los detecta ambos",
+              textAlign: TextAlign.center,
+              style: TextStyle(color: Colors.white70, fontSize: 13),
+            ),
+          ),
+
+          // Cámara
+          Expanded(
+            flex: 3,
+            child: Stack(
+              children: [
+                MobileScanner(controller: controller, onDetect: _onDetect),
+                // Marco guía — vertical y más alto, para abarcar los dos códigos de barra si están uno encima del otro
+                Center(
+                  child: Container(
+                    width: double.infinity,
+                    height: 160,
+                    margin: const EdgeInsets.symmetric(horizontal: 30),
+                    decoration: BoxDecoration(
+                      border: Border.all(color: foundImeis.isNotEmpty ? const Color(0xFF4ADE80) : const Color(0xFF38BDF8), width: 3),
+                      borderRadius: BorderRadius.circular(12),
+                    ),
+                  ),
+                ),
+              ],
+            ),
+          ),
+
+          // Panel inferior
+          Expanded(
+            flex: 2,
+            child: Container(
+              width: double.infinity,
+              color: const Color(0xFF0F172A),
+              padding: const EdgeInsets.all(20),
+              child: SingleChildScrollView(
+                child: Column(
+                  children: [
+                    if (foundImeis.isNotEmpty) ...[
+                      Text(
+                        foundImeis.length >= 2 ? "✅ 2 IMEIs detectados:" : "✅ IMEI detectado:",
+                        style: const TextStyle(color: Color(0xFF4ADE80), fontSize: 13, fontWeight: FontWeight.w600),
+                      ),
+                      const SizedBox(height: 8),
+                      ...foundImeis.asMap().entries.map((e) => Container(
+                        margin: const EdgeInsets.only(bottom: 8),
+                        padding: const EdgeInsets.all(12),
+                        decoration: BoxDecoration(
+                          color: const Color(0xFF1E293B),
+                          borderRadius: BorderRadius.circular(10),
+                          border: Border.all(color: const Color(0xFF4ADE80), width: 2),
+                        ),
+                        child: Column(children: [
+                          Text(
+                            foundImeis.length >= 2 ? "IMEI ${e.key + 1}" : "IMEI",
+                            style: const TextStyle(color: Colors.grey, fontSize: 11),
+                          ),
+                          Text(
+                            e.value,
+                            style: const TextStyle(
+                              color: Color(0xFF4ADE80),
+                              fontSize: 20,
+                              fontWeight: FontWeight.w900,
+                              fontFamily: 'monospace',
+                              letterSpacing: 2,
+                            ),
+                            textAlign: TextAlign.center,
+                          ),
+                        ]),
+                      )),
+                      if (foundImeis.length == 1)
+                        const Padding(
+                          padding: EdgeInsets.only(bottom: 8),
+                          child: Text("Seguí apuntando si hay un segundo IMEI, o confirmá con este solo.",
+                              textAlign: TextAlign.center, style: TextStyle(color: Colors.grey, fontSize: 12)),
+                        ),
+                      Row(children: [
+                        Expanded(
+                          child: OutlinedButton(
+                            onPressed: _reset,
+                            style: OutlinedButton.styleFrom(side: const BorderSide(color: Colors.grey)),
+                            child: const Text("Reintentar", style: TextStyle(color: Colors.grey)),
+                          ),
+                        ),
+                        const SizedBox(width: 12),
+                        Expanded(
+                          child: ElevatedButton(
+                            onPressed: _confirm,
+                            style: ElevatedButton.styleFrom(
+                              backgroundColor: const Color(0xFF4ADE80),
+                              foregroundColor: Colors.black,
+                              padding: const EdgeInsets.symmetric(vertical: 14),
+                            ),
+                            child: Text(
+                              foundImeis.length >= 2 ? "✓ Usar estos 2 IMEIs" : "✓ Usar este IMEI",
+                              style: const TextStyle(fontWeight: FontWeight.bold, fontSize: 15),
+                            ),
+                          ),
+                        ),
+                      ]),
+                    ] else ...[
+                      if (lastRejected != null) ...[
+                        Text("⚠️ Detectado pero no es IMEI:", style: TextStyle(color: Colors.amber.shade300, fontSize: 12)),
+                        const SizedBox(height: 4),
+                        Text(lastRejected!, style: const TextStyle(color: Colors.grey, fontSize: 12, fontFamily: 'monospace')),
+                        const SizedBox(height: 8),
+                        if (lastRejectedHint != null)
+                          Text(lastRejectedHint!, textAlign: TextAlign.center, style: const TextStyle(color: Color(0xFFFBBF24), fontSize: 12, fontWeight: FontWeight.w600))
+                        else
+                          const Text("Seguí buscando el código de 15 dígitos...", style: TextStyle(color: Colors.grey, fontSize: 12)),
+                      ] else
+                        const Text("Apuntá la cámara al código de barras\nmás largo de la etiqueta", textAlign: TextAlign.center, style: TextStyle(color: Colors.grey, fontSize: 14)),
+                      const SizedBox(height: 16),
+                      // Tip visual
+                      Container(
+                        padding: const EdgeInsets.all(10),
+                        decoration: BoxDecoration(color: const Color(0x1938BDF8), borderRadius: BorderRadius.circular(10)),
+                        child: const Text(
+                          "💡 Tip: En la caja suelen estar así:\n"
+                          "• SN: número de serie (más corto)\n"
+                          "• IMEI 1 / IMEI 2: 15 dígitos cada uno\n"
+                          "Buscá los que dicen 'IMEI' al lado",
+                          style: TextStyle(color: Color(0xFF38BDF8), fontSize: 12),
+                        ),
+                      ),
+                      const SizedBox(height: 10),
+                      Container(
+                        padding: const EdgeInsets.all(10),
+                        decoration: BoxDecoration(color: const Color(0x19A78BFA), borderRadius: BorderRadius.circular(10)),
+                        child: const Text(
+                          "📱 En cajas de SAMSUNG: hay varios códigos juntos (código de producto, S/N, EID). "
+                          "Apuntá directo a las dos barras chiquitas marcadas 'A' y 'B' al pie de la etiqueta — "
+                          "esas son las únicas con el IMEI limpio.",
+                          style: TextStyle(color: Color(0xFFA78BFA), fontSize: 12),
+                        ),
+                      ),
+                    ],
+                  ],
+                ),
+              ),
+            ),
+          ),
+        ],
+      ),
+    );
+  }
 }
-
-// ─── LOGIN ────────────────────────────────────────────────────────────────
-function Login({onLogin}){
-  const [u,setU]=useState(""); const [p,setP]=useState(""); const [err,setErr]=useState(""); const [loading,setLoading]=useState(false); const [showP,setShowP]=useState(false);
-  const [step,setStep]=useState(1); const [loggedUser,setLoggedUser]=useState(null); const [tienda,setTienda]=useState("NM 3");
-  async function go(){
-    if(!u||!p){setErr("Ingresá usuario y contraseña");return;}
-    setLoading(true);setErr("");
-    try{
-      let users=await api.get("usuarios","?username=eq."+u+"&password=eq."+p);
-      if(users.length===0){
-        const all=await api.get("usuarios","?limit=1");
-        if(all.length===0){for(const usr of INIT_USERS){try{await api.post("usuarios",usr);}catch(e){}}users=await api.get("usuarios","?username=eq."+u+"&password=eq."+p);}
-      }
-      if(users.length>0){
-        const usr=users[0];
-        if(usr.rol==="admin"||usr.rol==="almacen"||usr.rol==="tienda"){onLogin(usr);}
-        else{setLoggedUser(usr);setStep(2);}
-      }else{setErr("Usuario o contraseña incorrectos");}
-    }catch(e){setErr("Error de conexión");}
-    setLoading(false);
-  }
-  function confirmarTienda(){onLogin({...loggedUser,tienda});}
-
-  if(step===2)return <div style={{flex:1,display:"flex",flexDirection:"column",alignItems:"center",justifyContent:"center",padding:24,background:"linear-gradient(135deg, #0a0f1e, #0f2044, #0a1628)",overflowY:"auto"}}>
-    <div style={{width:"100%",maxWidth:420,background:"rgba(17,24,39,0.95)",borderRadius:24,padding:28,border:"1px solid rgba(99,179,237,0.2)"}}>
-      <div style={{textAlign:"center",marginBottom:20}}>
-        <div style={{fontSize:44,marginBottom:8}}>🏪</div>
-        <div style={{color:"#fff",fontSize:20,fontWeight:800}}>Hola, {loggedUser?.nombre}!</div>
-        <div style={{color:C.muted,fontSize:15,marginTop:4}}>¿En qué tienda trabajás hoy?</div>
-      </div>
-      <div style={{display:"flex",flexDirection:"column",gap:10,marginBottom:20}}>
-        {TIENDAS_EMP.map(t=><button key={t} onClick={()=>setTienda(t)} style={{padding:"16px 20px",borderRadius:16,border:"2px solid "+(tienda===t?C.blue:"rgba(99,179,237,0.2)"),background:tienda===t?"rgba(56,189,248,0.12)":"transparent",color:tienda===t?C.blue:C.text,fontSize:17,fontWeight:tienda===t?700:400,cursor:"pointer",textAlign:"left",display:"flex",alignItems:"center",gap:12}}>
-          <span style={{fontSize:20}}>🏪</span>{t}{tienda===t&&<span style={{marginLeft:"auto",color:C.blue}}>✓</span>}
-        </button>)}
-      </div>
-      <Btn onClick={confirmarTienda} full>Entrar a {tienda} →</Btn>
-      <button onClick={()=>setStep(1)} style={{width:"100%",marginTop:12,background:"none",border:"none",color:C.muted,cursor:"pointer",fontSize:14}}>← Cambiar usuario</button>
-    </div>
-  </div>;
-
-  return <div style={{flex:1,display:"flex",flexDirection:"column",alignItems:"center",justifyContent:"center",padding:24,background:"linear-gradient(135deg, #0a0f1e, #0f2044, #0a1628)",overflowY:"auto"}}>
-    <div style={{width:"100%",maxWidth:420,background:"rgba(17,24,39,0.95)",borderRadius:24,padding:28,border:"1px solid rgba(99,179,237,0.2)"}}>
-      <div style={{textAlign:"center",marginBottom:24}}>
-        <div style={{fontSize:48,marginBottom:8}}>📱</div>
-        <div style={{display:"flex",alignItems:"center",justifyContent:"center",gap:4}}>
-          <span style={{fontWeight:900,fontSize:26,color:"#fff"}}>IMPORT</span>
-          <span style={{fontWeight:900,fontSize:26,color:C.blue}}>CELLS</span>
-        </div>
-        <div style={{background:C.blueDim,borderRadius:99,padding:"5px 14px",fontSize:12,color:C.blue,fontWeight:600,display:"inline-block",marginTop:6}}>🟢 Import Sales · Sistema en vivo</div>
-      </div>
-      {err&&<div style={{background:C.redDim,border:"1px solid rgba(248,113,113,0.3)",borderRadius:12,padding:"12px 16px",color:C.red,marginBottom:14,textAlign:"center",fontWeight:600}}>{err}</div>}
-      <div style={{marginBottom:14}}><label style={LS}>Usuario</label><input style={{...IS,fontSize:17}} value={u} placeholder="anthony, jeremy..." autoCapitalize="none" onChange={e=>setU(e.target.value)} onKeyDown={e=>e.key==="Enter"&&go()}/></div>
-      <div style={{marginBottom:20,position:"relative"}}><label style={LS}>Contraseña</label><input style={{...IS,fontSize:17}} type={showP?"text":"password"} value={p} placeholder="••••••" onChange={e=>setP(e.target.value)} onKeyDown={e=>e.key==="Enter"&&go()}/><button onClick={()=>setShowP(!showP)} style={{position:"absolute",right:14,top:34,background:"none",border:"none",color:C.muted,cursor:"pointer",fontSize:18}}>{showP?"🙈":"👁️"}</button></div>
-      <Btn onClick={go} full disabled={loading} style={{fontSize:17,padding:"17px"}}>{loading?"Ingresando...":"Ingresar →"}</Btn>
-    </div>
-  </div>;
-}
-
-// ─── INVENTARIO ────────────────────────────────────────────────────────────
-function Papelera({onClose,onRestore}){
-  const [items,setItems]=useState([]); const [loading,setLoading]=useState(true); const [toast,setToast]=useState(null);
-  async function load(){
-    setLoading(true);
-    try{setItems(await api.get("inventario","?eliminado=eq.true&order=created_at.desc"));}
-    catch(e){setToast({t:"error",m:"La papelera todavía no está lista (falta correr el SQL en Supabase)"});}
-    setLoading(false);
-  }
-  useEffect(()=>{load();},[]);
-  async function restaurar(p){
-    try{
-      await api.patch("inventario",p.id,{eliminado:false,estado:"disponible"});
-      setItems(prev=>prev.filter(x=>x.id!==p.id));
-      onRestore&&onRestore();
-    }catch(e){setToast({t:"error",m:"Error: "+e.message});}
-  }
-  return <div style={{position:"fixed",inset:0,background:"rgba(0,0,0,0.7)",zIndex:998,display:"flex",alignItems:"flex-end"}} onClick={onClose}>
-    <div style={{width:"100%",maxHeight:"85vh",background:C.surface,borderRadius:"24px 24px 0 0",padding:24,overflowY:"auto"}} onClick={e=>e.stopPropagation()}>
-      <Toast msg={toast} onClose={()=>setToast(null)}/>
-      <div style={{display:"flex",justifyContent:"space-between",alignItems:"center",marginBottom:6}}>
-        <span style={{color:C.text,fontWeight:800,fontSize:19}}>🗑️ Papelera</span>
-        <button onClick={onClose} style={{background:"none",border:"none",color:C.muted,cursor:"pointer",fontSize:20}}>✕</button>
-      </div>
-      <div style={{color:C.muted,fontSize:12,marginBottom:14}}>Teléfonos enviados a la papelera. Se pueden restaurar en cualquier momento.</div>
-      {loading?<Spin/>:items.length===0?<div style={{textAlign:"center",color:C.muted,padding:30}}>La papelera está vacía</div>:items.map(p=>
-        <div key={p.id} style={{background:"#1e293b",borderRadius:12,padding:14,marginBottom:10,display:"flex",justifyContent:"space-between",alignItems:"center"}}>
-          <div>
-            <div style={{color:C.text,fontWeight:700}}>{p.marca} {p.modelo}</div>
-            {p.imei&&<div style={{color:C.blue,fontSize:12,fontFamily:"monospace"}}>IMEI: {p.imei}</div>}
-          </div>
-          <button onClick={()=>restaurar(p)} style={{background:C.green,border:"none",borderRadius:10,padding:"8px 16px",color:"#0a0f1e",fontWeight:800,cursor:"pointer"}}>Restaurar</button>
-        </div>
-      )}
-    </div>
-  </div>;
-}
-
-function Inventario({user}){
-  const [items,setItems]=useState([]); const [modelosSug,setModelosSug]=useState([]); const [loading,setLoading]=useState(true);
-  const [coloresGuardados,setColoresGuardados]=useState([]); const [proveedoresGuardados,setProveedoresGuardados]=useState([]);
-  const [show,setShow]=useState(false); const [saving,setSaving]=useState(false); const [toast,setToast]=useState(null);
-  const [search,setSearch]=useState(""); const [fs,setFs]=useState("todos"); const [showQR,setShowQR]=useState(false); const [showQR2,setShowQR2]=useState(false);
-  const [showPapelera,setShowPapelera]=useState(false);
-  const [showQRBusqueda,setShowQRBusqueda]=useState(false);
-  const [editItem,setEditItem]=useState(null);
-  const [expanded,setExpanded]=useState({});
-  const toggleGroup=k=>setExpanded(p=>({...p,[k]:!p[k]}));
-  const isAdmin=user.rol==="admin"; const canEdit=user.rol==="admin"||user.rol==="almacen";
-  const E={imei:"",imei2:"",marca:"",modelo:"",color:"",almacenamiento:"",ram:"",precio:"",precio_mayorista:"",costo:"",ubicacion:user.tienda||"Almacén Central",tipo:"libre",proveedor:"",notas:""};
-  const [form,setForm]=useState(E); const ff=k=>v=>setForm(p=>({...p,[k]:v}));
-  const [modeloInput,setModeloInput]=useState(""); const [showSug,setShowSug]=useState(false);
-  const [marcaInput,setMarcaInput]=useState(""); const [showMarcaSug,setShowMarcaSug]=useState(false);
-  const [colorInput,setColorInput]=useState(""); const [showColorSug,setShowColorSug]=useState(false);
-  const [provInput,setProvInput]=useState(""); const [showProvSug,setShowProvSug]=useState(false);
-
-  function onMarcaChange(v){setMarcaInput(v);ff("marca")(v);if(v.length>=1){const q=v.toLowerCase();setShowMarcaSug(marcasTodos.some(m=>m.toLowerCase().includes(q)));}else setShowMarcaSug(false);}
-  function selectMarca(m){setMarcaInput(m);ff("marca")(m);setShowMarcaSug(false);}
-
-  // Lista combinada de colores: predefinidos + los que se han escrito antes (sin duplicar)
-  const coloresTodos=(()=>{const set=new Map();COLORES.forEach(c=>set.set(c.toLowerCase(),c));coloresGuardados.forEach(c=>{if(c.color)set.set(c.color.toLowerCase(),c.color);});return Array.from(set.values());})();
-  const proveedoresTodos=(()=>{const set=new Map();proveedoresGuardados.forEach(p=>{if(p.proveedor)set.set(p.proveedor.toLowerCase(),p.proveedor);});return Array.from(set.values());})();
-  // Lista combinada de marcas: predefinidas + cualquier marca nueva ya usada en modelos guardados
-  const marcasTodos=(()=>{const set=new Map();MARCAS.forEach(m=>set.set(m.toLowerCase(),m));modelosSug.forEach(m=>{if(m.marca)set.set(m.marca.toLowerCase(),m.marca);});return Array.from(set.values());})();
-
-  async function load(){setLoading(true);try{setItems(await api.get("inventario","?eliminado=eq.false&order=created_at.desc"));}catch(e){try{setItems(await api.get("inventario","?order=created_at.desc"));}catch(e2){setToast({t:"error",m:"Error cargando"});}}setLoading(false);}
-  async function loadSug(){try{setModelosSug(await api.get("modelos_guardados","?order=created_at.desc"));}catch(e){}}
-  async function loadColores(){try{setColoresGuardados(await api.get("colores_guardados","?order=created_at.desc"));}catch(e){}}
-  async function loadProveedores(){try{setProveedoresGuardados(await api.get("proveedores_guardados","?order=created_at.desc"));}catch(e){}}
-  useEffect(()=>{load();loadSug();loadColores();loadProveedores();},[]);
-
-  function onColorChange(v){setColorInput(v);ff("color")(v);if(v.length>=1){const q=v.toLowerCase();setShowColorSug(coloresTodos.some(c=>c.toLowerCase().includes(q)));}else setShowColorSug(false);}
-  function selectColor(c){setColorInput(c);ff("color")(c);setShowColorSug(false);}
-  function onProvChange(v){setProvInput(v);ff("proveedor")(v);if(v.length>=1){const q=v.toLowerCase();setShowProvSug(proveedoresTodos.some(p=>p.toLowerCase().includes(q)));}else setShowProvSug(false);}
-  function selectProv(p){setProvInput(p);ff("proveedor")(p);setShowProvSug(false);}
-
-  async function saveNewColorAndProv(){
-    const c=(form.color||"").trim(); const p=(form.proveedor||"").trim();
-    if(c&&!coloresTodos.some(x=>x.toLowerCase()===c.toLowerCase())){try{await api.post("colores_guardados",{color:c});loadColores();}catch(e){}}
-    if(p&&!proveedoresTodos.some(x=>x.toLowerCase()===p.toLowerCase())){try{await api.post("proveedores_guardados",{proveedor:p});loadProveedores();}catch(e){}}
-  }
-
-  function onModeloChange(v){setModeloInput(v);ff("modelo")(v);if(v.length>=2){const q=v.toLowerCase();const f=modelosSug.filter(m=>(m.modelo||"").toLowerCase().includes(q)||(m.marca||"").toLowerCase().includes(q)).slice(0,5);setShowSug(f.length>0);}else setShowSug(false);}
-  function selectSug(m){setForm(p=>({...p,modelo:m.modelo||"",marca:m.marca||p.marca,ram:m.ram||p.ram,almacenamiento:m.almacenamiento||p.almacenamiento}));setModeloInput(m.modelo||"");setShowSug(false);}
-
-  async function imeiYaExiste(imei,excludeId){
-    const v=(imei||"").trim();
-    if(!v)return false;
-    try{
-      const r1=await api.get("inventario","?imei=eq."+encodeURIComponent(v));
-      const r2=await api.get("inventario","?imei2=eq."+encodeURIComponent(v));
-      const all=[...r1,...r2].filter(x=>x.id!==excludeId);
-      return all.length>0;
-    }catch(e){return false;}
-  }
-
-  async function add(){
-    if(!form.marca||!form.modelo.trim()){setToast({t:"error",m:"Marca y Modelo son obligatorios"});return;}
-    if(!form.precio||+form.precio<=0){setToast({t:"error",m:"Ingresá un precio válido"});return;}
-    const imei1=(form.imei||"").trim(),imei2=(form.imei2||"").trim();
-    if(imei1&&await imeiYaExiste(imei1)){setToast({t:"error",m:"⚠️ Ese IMEI ya existe en el inventario"});return;}
-    if(imei2&&await imeiYaExiste(imei2)){setToast({t:"error",m:"⚠️ Ese IMEI 2 ya existe en el inventario"});return;}
-    setSaving(true);
-    const obj={imei:imei1,imei2:imei2,marca:form.marca,modelo:form.modelo,color:form.color,almacenamiento:form.almacenamiento,ram:form.ram,precio:+form.precio,precio_mayorista:+(form.precio_mayorista||form.precio||0),costo:+(form.costo||0),ubicacion:form.ubicacion,tipo:form.tipo||"libre",proveedor:form.proveedor||"",estado:"disponible",notas:form.notas,fecha_ingreso:new Date().toISOString()};
-    try{
-      let provNoGuardado=false;
-      try{
-        await api.post("inventario",obj);
-      }catch(e){
-        const {proveedor,...objSinProveedor}=obj;
-        try{
-          await api.post("inventario",objSinProveedor);
-        }catch(e2){
-          const {imei2,...objBasico}=objSinProveedor;
-          await api.post("inventario",objBasico);
-        }
-        provNoGuardado=true;
-      }
-      try{await api.post("modelos_guardados",{marca:form.marca,modelo:form.modelo,ram:form.ram,almacenamiento:form.almacenamiento});}catch(e){}
-      await saveNewColorAndProv();
-      setToast(provNoGuardado?{t:"error",m:"Guardado, pero algo no se pudo guardar (falta actualizar la base de datos)"}:{t:"ok",m:"Teléfono agregado"});
-      setForm(E);setModeloInput("");setMarcaInput("");setColorInput("");setProvInput("");setShow(false);load();loadSug();
-    }catch(e){setToast({t:"error",m:"Error: "+e.message});}
-    setSaving(false);
-  }
-
-  async function saveEdit(){
-    setSaving(true);
-    try{
-      await api.patch("inventario",editItem.id,{marca:form.marca,modelo:form.modelo,color:form.color,almacenamiento:form.almacenamiento,ram:form.ram,precio:+form.precio,precio_mayorista:+(form.precio_mayorista||0),costo:+(form.costo||0),tipo:form.tipo,ubicacion:form.ubicacion,proveedor:form.proveedor||"",imei:form.imei,imei2:form.imei2||"",notas:form.notas});
-      await saveNewColorAndProv();
-      setToast({t:"ok",m:"Teléfono actualizado"});setEditItem(null);setForm(E);load();
-    }catch(e){setToast({t:"error",m:"Error: "+e.message});}
-    setSaving(false);
-  }
-
-  const filtered=items.filter(p=>{
-    const q=search.toLowerCase();
-    return(!q||(p.imei||"").includes(q)||(p.imei2||"").includes(q)||(p.marca||"").toLowerCase().includes(q)||(p.modelo||"").toLowerCase().includes(q)||(p.color||"").toLowerCase().includes(q))&&(fs==="todos"||p.estado===fs);
-  });
-  const disponibles=filtered.filter(p=>p.estado==="disponible");
-  const noDisp=filtered.filter(p=>p.estado!=="disponible");
-
-  // Group by modelo
-  function groupBy(arr){const g={};arr.forEach(p=>{const k=(p.marca||"")+" "+(p.modelo||"");g[k]=g[k]||[];g[k].push(p);});return g;}
-  const gDisp=groupBy(disponibles); const gNoDisp=groupBy(noDisp);
-
-  function PhoneCard({p}){
-    const isReg=p.tipo==="registrado";
-    // Restamos 5h fijas (hora de Perú) en vez de usar getHours()/getDate() locales,
-    // que dependen de cómo esté configurado el celular de cada quien.
-    const fi=p.fecha_ingreso?new Date(new Date(p.fecha_ingreso).getTime()-5*60*60*1000):null;
-    const fv=p.fecha_venta?new Date(new Date(p.fecha_venta).getTime()-5*60*60*1000):null;
-    const fmt=d=>d?`${d.getUTCDate().toString().padStart(2,"0")}/${(d.getUTCMonth()+1).toString().padStart(2,"0")} ${d.getUTCHours().toString().padStart(2,"0")}:${d.getUTCMinutes().toString().padStart(2,"0")}`:"";
-    return <div style={{...KS,marginBottom:10,borderLeft:"4px solid "+(isReg?C.green:C.blue),opacity:p.estado==="disponible"?1:0.7}}>
-      {p.imei&&<div style={{fontFamily:"monospace",color:C.blue,fontSize:13,background:C.blueDim,padding:"3px 10px",borderRadius:8,display:"inline-block",marginBottom:6}}>IMEI: {p.imei}</div>}
-      {p.imei2&&<div style={{fontFamily:"monospace",color:C.purple,fontSize:13,background:C.purpleDim,padding:"3px 10px",borderRadius:8,display:"inline-block",marginBottom:6,marginLeft:6}}>IMEI 2: {p.imei2}</div>}
-      <div style={{display:"flex",flexWrap:"wrap",gap:6,marginBottom:8}}>
-        {p.color&&<span style={{background:"rgba(255,255,255,0.06)",color:C.muted,padding:"2px 8px",borderRadius:6,fontSize:12}}>{p.color}</span>}
-        {p.almacenamiento&&<span style={{background:C.blueDim,color:C.blue,padding:"2px 8px",borderRadius:6,fontSize:12}}>{p.almacenamiento}</span>}
-        {p.ram&&<span style={{background:C.purpleDim,color:C.purple,padding:"2px 8px",borderRadius:6,fontSize:12}}>RAM: {p.ram}</span>}
-        {p.ubicacion&&<span style={{background:C.amberDim,color:C.amber,padding:"2px 8px",borderRadius:6,fontSize:12}}>{p.ubicacion}</span>}
-        {p.proveedor&&<span style={{background:"rgba(167,139,250,0.10)",color:C.purple,padding:"2px 8px",borderRadius:6,fontSize:12}}>🏷️ {p.proveedor}</span>}
-      </div>
-      <div style={{display:"flex",flexWrap:"wrap",gap:8,alignItems:"center",marginBottom:6}}>
-        <span style={{color:C.green,fontWeight:900,fontSize:18}}>S/.{(p.precio||0).toLocaleString()}</span>
-        {p.precio_mayorista>0&&<span style={{color:C.purple,fontSize:13,background:C.purpleDim,padding:"2px 8px",borderRadius:6}}>May: S/.{p.precio_mayorista}</span>}
-        {isAdmin&&p.costo>0&&<span style={{color:C.muted,fontSize:13}}>Costo: S/.{p.costo}</span>}
-        <span style={badge(p.estado)}>{p.estado}</span>
-        <span style={badge(isReg?"registrado":"libre")}>{isReg?"✅ Reg":"📱 Libre"}</span>
-      </div>
-      <div style={{display:"flex",justifyContent:"space-between",alignItems:"center"}}>
-        <div style={{fontSize:11,color:C.muted}}>
-          {fi&&<span>↓ {fmt(fi)}</span>}
-          {fv&&<span style={{color:C.green,marginLeft:8}}>✓ {fmt(fv)}</span>}
-        </div>
-        <div style={{display:"flex",gap:8}}>
-          {isAdmin&&p.estado!=="disponible"&&<button onClick={async()=>{if(!confirm("¿Marcar disponible? Úsalo cuando el teléfono quedó atascado (ej. una entrega o venta devuelta que no actualizó el inventario)."))return;try{await api.patch("inventario",p.id,{estado:"disponible",fecha_venta:null});setToast({t:"ok",m:"✅ Marcado como disponible"});load();}catch(e){setToast({t:"error",m:"Error: "+e.message});}}} style={{background:"rgba(74,222,128,0.1)",border:"1px solid rgba(74,222,128,0.3)",borderRadius:8,padding:"5px 12px",color:C.green,cursor:"pointer",fontSize:13}}>🔓 Disponible</button>}
-          {isAdmin&&<button onClick={()=>{setEditItem(p);setForm({imei:p.imei||"",imei2:p.imei2||"",marca:p.marca||"",modelo:p.modelo||"",color:p.color||"",almacenamiento:p.almacenamiento||"",ram:p.ram||"",precio:p.precio||"",precio_mayorista:p.precio_mayorista||"",costo:p.costo||"",ubicacion:p.ubicacion||"Almacén Central",tipo:p.tipo||"libre",proveedor:p.proveedor||"",notas:p.notas||""});setModeloInput(p.modelo||"");setMarcaInput(p.marca||"");setColorInput(p.color||"");setProvInput(p.proveedor||"");setShow(false);}} style={{background:"rgba(56,189,248,0.1)",border:"1px solid rgba(56,189,248,0.3)",borderRadius:8,padding:"5px 12px",color:C.blue,cursor:"pointer",fontSize:13}}>✏️ Editar</button>}
-          {isAdmin&&<button onClick={async()=>{if(!confirm("¿Enviar "+(p.marca||"")+" "+(p.modelo||"")+(p.imei?" (IMEI: "+p.imei+")":"")+" a la papelera?\n\nDejará de aparecer en el inventario. Se puede restaurar después si fue un error."))return;try{await api.patch("inventario",p.id,{eliminado:true});await api.post("auditoria",{usuario:user.nombre,accion:"Envió a papelera",tabla:"inventario",detalle:(p.marca||"")+" "+(p.modelo||"")+" — IMEI: "+(p.imei||"")});setToast({t:"ok",m:"🗑️ Enviado a la papelera (se puede restaurar)"});load();}catch(e){setToast({t:"error",m:"Error: "+e.message});}}} style={{background:"rgba(248,113,113,0.1)",border:"1px solid rgba(248,113,113,0.3)",borderRadius:8,padding:"5px 10px",color:C.red,cursor:"pointer",fontSize:13}}>🗑️</button>}
-        </div>
-      </div>
-    </div>;
-  }
-
-  function SectionHeader({icon,label,count,color,bg}){
-    return <div style={{display:"flex",alignItems:"center",gap:10,marginBottom:10,padding:"10px 14px",background:bg,borderRadius:12,border:"1px solid "+color+"44"}}>
-      <span style={{fontSize:16}}>{icon}</span>
-      <span style={{color,fontWeight:800,fontSize:15}}>{label}</span>
-      <span style={{background:color,color:"#fff",padding:"2px 10px",borderRadius:99,fontSize:12,fontWeight:700,marginLeft:"auto"}}>{count}</span>
-    </div>;
-  }
-
-  function FormPanel({onSave,title,btnText}){
-    return <div style={{...KS,border:"2px solid "+C.blue,marginBottom:16}} className="su">
-      <div style={{color:C.blue,fontWeight:800,fontSize:17,marginBottom:14}}>{title}</div>
-      <div style={{marginBottom:12}}>
-        <label style={LS}>IMEI</label>
-        <div style={{display:"flex",gap:8}}>
-          <input style={{...IS,flex:1}} value={form.imei} placeholder="15 dígitos" onChange={e=>ff("imei")(e.target.value)}/>
-          <button onClick={()=>setShowQR(true)} style={{background:C.blueDim,border:"2px solid "+C.blue,borderRadius:12,padding:"0 16px",cursor:"pointer",fontSize:20,color:C.blue}}>⬛</button>
-        </div>
-      </div>
-      <div style={{marginBottom:12}}>
-        <label style={LS}>IMEI 2 (opcional, dual SIM)</label>
-        <div style={{display:"flex",gap:8}}>
-          <input style={{...IS,flex:1}} value={form.imei2||""} placeholder="15 dígitos" onChange={e=>ff("imei2")(e.target.value)}/>
-          <button onClick={()=>setShowQR2(true)} style={{background:C.purpleDim,border:"2px solid "+C.purple,borderRadius:12,padding:"0 16px",cursor:"pointer",fontSize:20,color:C.purple}}>⬛</button>
-        </div>
-      </div>
-      <div style={{display:"grid",gridTemplateColumns:"1fr 1fr",gap:12,marginBottom:12}}>
-        <div style={{position:"relative"}}>
-          <label style={LS}>Marca ★</label>
-          <input style={IS} value={marcaInput} placeholder="Ej: Infinix..." onChange={e=>onMarcaChange(e.target.value)} onFocus={()=>marcaInput&&setShowMarcaSug(marcasTodos.some(m=>m.toLowerCase().includes(marcaInput.toLowerCase())))}/>
-          {showMarcaSug&&<div style={{position:"absolute",top:"100%",left:0,right:0,background:"#1e293b",borderRadius:10,border:"1px solid "+C.border,zIndex:100,maxHeight:180,overflowY:"auto"}}>
-            {marcasTodos.filter(m=>m.toLowerCase().includes(marcaInput.toLowerCase())).slice(0,6).map((m,i)=><div key={i} onClick={()=>selectMarca(m)} style={{padding:"9px 14px",cursor:"pointer",borderBottom:"1px solid "+C.border,fontSize:14,color:C.text}}>{m}</div>)}
-          </div>}
-        </div>
-        <div style={{position:"relative"}}>
-          <label style={LS}>Modelo ★</label>
-          <input style={IS} value={modeloInput} placeholder="iPhone 17 Pro..." onChange={e=>onModeloChange(e.target.value)}/>
-          {showSug&&<div style={{position:"absolute",top:"100%",left:0,right:0,background:"#1e293b",borderRadius:10,border:"1px solid "+C.border,zIndex:100}}>
-            {modelosSug.filter(m=>(m.modelo||"").toLowerCase().includes(modeloInput.toLowerCase())||(m.marca||"").toLowerCase().includes(modeloInput.toLowerCase())).slice(0,5).map((m,i)=><div key={i} onClick={()=>selectSug(m)} style={{padding:"10px 14px",cursor:"pointer",borderBottom:"1px solid "+C.border,fontSize:14}}>
-              <div style={{color:C.text,fontWeight:600}}>{m.marca} {m.modelo}</div>
-              {(m.ram||m.almacenamiento)&&<div style={{color:C.muted,fontSize:12}}>{m.ram} {m.almacenamiento}</div>}
-            </div>)}
-          </div>}
-        </div>
-        <div style={{position:"relative"}}>
-          <label style={LS}>Color</label>
-          <input style={IS} value={colorInput} placeholder="Ej: Titanium Black..." onChange={e=>onColorChange(e.target.value)} onFocus={()=>colorInput&&setShowColorSug(coloresTodos.some(c=>c.toLowerCase().includes(colorInput.toLowerCase())))}/>
-          {showColorSug&&<div style={{position:"absolute",top:"100%",left:0,right:0,background:"#1e293b",borderRadius:10,border:"1px solid "+C.border,zIndex:100,maxHeight:180,overflowY:"auto"}}>
-            {coloresTodos.filter(c=>c.toLowerCase().includes(colorInput.toLowerCase())).slice(0,6).map((c,i)=><div key={i} onClick={()=>selectColor(c)} style={{padding:"9px 14px",cursor:"pointer",borderBottom:"1px solid "+C.border,fontSize:14,color:C.text}}>{c}</div>)}
-          </div>}
-        </div>
-        <div><label style={LS}>Almacenamiento</label><select style={{...IS,appearance:"none"}} value={form.almacenamiento} onChange={e=>ff("almacenamiento")(e.target.value)}><option value="">Seleccionar...</option>{ALMS.map(a=><option key={a}>{a}</option>)}</select></div>
-        <div><label style={LS}>RAM</label><select style={{...IS,appearance:"none"}} value={form.ram} onChange={e=>ff("ram")(e.target.value)}><option value="">Seleccionar...</option>{RAMS.map(r=><option key={r}>{r}</option>)}</select></div>
-        <div><label style={LS}>Tipo</label><select style={{...IS,appearance:"none"}} value={form.tipo} onChange={e=>ff("tipo")(e.target.value)}><option value="libre">📱 Libre</option><option value="registrado">✅ Registrado</option></select></div>
-        <Field label="Precio público (S/.) ★" value={form.precio} onChange={ff("precio")} type="number"/>
-        <Field label="Precio mayorista (S/.)" value={form.precio_mayorista} onChange={ff("precio_mayorista")} type="number"/>
-        {isAdmin&&<Field label="Costo (S/.) 🔒" value={form.costo} onChange={ff("costo")} type="number"/>}
-        <Field label="Ubicación" value={form.ubicacion} onChange={ff("ubicacion")} options={TIENDAS}/>
-        <div style={{position:"relative"}}>
-          <label style={LS}>Proveedor</label>
-          <input style={IS} value={provInput} placeholder="Ej: Juan Pérez..." onChange={e=>onProvChange(e.target.value)} onFocus={()=>provInput&&setShowProvSug(proveedoresTodos.some(p=>p.toLowerCase().includes(provInput.toLowerCase())))}/>
-          {showProvSug&&<div style={{position:"absolute",top:"100%",left:0,right:0,background:"#1e293b",borderRadius:10,border:"1px solid "+C.border,zIndex:100,maxHeight:180,overflowY:"auto"}}>
-            {proveedoresTodos.filter(p=>p.toLowerCase().includes(provInput.toLowerCase())).slice(0,6).map((p,i)=><div key={i} onClick={()=>selectProv(p)} style={{padding:"9px 14px",cursor:"pointer",borderBottom:"1px solid "+C.border,fontSize:14,color:C.text}}>{p}</div>)}
-          </div>}
-        </div>
-      </div>
-      <Field label="Notas" value={form.notas} onChange={ff("notas")} placeholder="Observaciones..."/>
-      <div style={{display:"flex",gap:10,marginTop:14}}>
-        <Btn onClick={onSave} full disabled={saving}>{saving?"⏳ Guardando...":btnText}</Btn>
-        <Btn onClick={()=>{setShow(false);setEditItem(null);setForm(E);setModeloInput("");setMarcaInput("");setColorInput("");setProvInput("");}} variant="ghost">✕</Btn>
-      </div>
-    </div>;
-  }
-
-  return <div style={{flex:1,overflowY:"auto",padding:16}}>
-    <Toast msg={toast} onClose={()=>setToast(null)}/>
-    {showQR&&<QRScanner onScan={v=>{
-      if(Array.isArray(v)){setForm(p=>({...p,imei:v[0],imei2:v[1]||p.imei2}));setToast({t:"ok",m:"✅ 2 IMEIs escaneados y rellenados"});}
-      else{ff("imei")(v);setToast({t:"ok",m:"IMEI: "+v});}
-      setShowQR(false);
-    }} onClose={()=>setShowQR(false)}/>}
-    {showQR2&&<QRScanner onScan={v=>{
-      if(Array.isArray(v)){setForm(p=>({...p,imei:v[0],imei2:v[1]||p.imei2}));setToast({t:"ok",m:"✅ 2 IMEIs escaneados y rellenados"});}
-      else{ff("imei2")(v);setToast({t:"ok",m:"IMEI 2: "+v});}
-      setShowQR2(false);
-    }} onClose={()=>setShowQR2(false)}/>}
-    <div style={{display:"flex",alignItems:"center",justifyContent:"space-between",marginBottom:16}}>
-      <h2 style={{fontSize:24,fontWeight:900,color:C.text}}>📦 Inventario</h2>
-      <div style={{display:"flex",gap:8}}>
-        <button onClick={load} style={{background:C.card,border:"1px solid "+C.border,borderRadius:12,padding:"10px 14px",color:C.muted,cursor:"pointer"}}>🔄</button>
-        {isAdmin&&<button onClick={()=>setShowPapelera(true)} style={{background:C.card,border:"1px solid "+C.border,borderRadius:12,padding:"10px 14px",color:C.muted,cursor:"pointer",fontSize:13}}>🗑️ Papelera</button>}
-        {canEdit&&<Btn onClick={()=>{setShow(!show);setEditItem(null);setForm(E);setModeloInput("");setMarcaInput("");setColorInput("");setProvInput("");}} small>{show?"✕":"+ Agregar"}</Btn>}
-      </div>
-    </div>
-    {showPapelera&&<Papelera onClose={()=>setShowPapelera(false)} onRestore={load}/>}
-    <div style={{display:"grid",gridTemplateColumns:"1fr 1fr",gap:10,marginBottom:16}}>
-      {[["Total",items.length,C.blue],["Disponible",items.filter(p=>p.estado==="disponible").length,C.green],["Vendido",items.filter(p=>p.estado==="vendido").length,C.red],["Entregado",items.filter(p=>p.estado==="entregado").length,C.amber]].map(([l,v,c])=><div key={l} style={{background:c+"22",border:"1px solid "+c+"44",borderRadius:16,padding:"14px 12px",textAlign:"center"}}><div style={{fontSize:26,fontWeight:900,color:c}}>{v}</div><div style={{color:c,fontSize:13,fontWeight:600}}>{l}</div></div>)}
-    </div>
-    {show&&!editItem&&<FormPanel onSave={add} title="➕ Nuevo Teléfono" btnText="✓ Guardar teléfono"/>}
-    {editItem&&<FormPanel onSave={saveEdit} title={"✏️ Editar: "+editItem.marca+" "+editItem.modelo} btnText="✓ Guardar cambios"/>}
-    <div style={{display:"flex",gap:8,marginBottom:12}}>
-      <input style={{...IS,flex:1}} placeholder="🔍 Buscar IMEI, marca o modelo..." value={search} onChange={e=>setSearch(e.target.value)}/>
-      <button onClick={()=>setShowQRBusqueda(true)} style={{background:C.blueDim,border:"2px solid "+C.blue,borderRadius:12,padding:"0 16px",cursor:"pointer",fontSize:18,color:C.blue}}>⬛</button>
-    </div>
-    {showQRBusqueda&&<QRScanner onScan={v=>{const imei=Array.isArray(v)?v[0]:v;setSearch(imei);setFs("todos");setShowQRBusqueda(false);}} onClose={()=>setShowQRBusqueda(false)}/>}
-    <div style={{display:"flex",gap:8,marginBottom:14,overflowX:"auto",paddingBottom:4}}>
-      {["todos","disponible","entregado","vendido"].map(f=><button key={f} onClick={()=>setFs(f)} style={{padding:"9px 16px",borderRadius:99,border:"1px solid "+(fs===f?C.blue:C.border),background:fs===f?"rgba(56,189,248,0.15)":"rgba(255,255,255,0.05)",color:fs===f?C.blue:C.muted,cursor:"pointer",fontSize:13,fontWeight:600,whiteSpace:"nowrap"}}>{f.charAt(0).toUpperCase()+f.slice(1)}</button>)}
-    </div>
-    {loading?<Spin/>:filtered.length===0?<div style={{textAlign:"center",color:C.muted,padding:40}}>Sin teléfonos</div>:<div>
-      {disponibles.length>0&&<div>
-        <SectionHeader icon="📦" label="Disponibles" count={disponibles.length} color={C.blue} bg={C.blueDim}/>
-        {Object.keys(gDisp).sort().map(k=>{const isOpen=search.trim()!==""||!!expanded["d:"+k];return <div key={k}>
-          <div onClick={()=>toggleGroup("d:"+k)} style={{background:"#1e293b",borderRadius:10,padding:"10px 14px",marginBottom:6,display:"flex",justifyContent:"space-between",alignItems:"center",cursor:"pointer",userSelect:"none"}}>
-            <span style={{color:C.text,fontWeight:700,fontSize:15,display:"flex",alignItems:"center",gap:8}}><span style={{fontSize:12,color:C.muted,transition:"transform 0.15s",display:"inline-block",transform:isOpen?"rotate(90deg)":"rotate(0deg)"}}>▶</span>{k}</span>
-            <span style={{color:C.muted,fontSize:12}}>{gDisp[k].length} unidades</span>
-          </div>
-          {isOpen&&gDisp[k].map(p=><PhoneCard key={p.id} p={p}/>)}
-        </div>;})}
-      </div>}
-      {noDisp.length>0&&<div style={{marginTop:8}}>
-        <SectionHeader icon="✅" label="Vendidos / Entregados" count={noDisp.length} color={C.red} bg={C.redDim}/>
-        {Object.keys(gNoDisp).sort().map(k=>{const isOpen=search.trim()!==""||!!expanded["n:"+k];return <div key={k}>
-          <div onClick={()=>toggleGroup("n:"+k)} style={{background:"#1e293b",borderRadius:10,padding:"10px 14px",marginBottom:6,display:"flex",justifyContent:"space-between",alignItems:"center",cursor:"pointer",userSelect:"none"}}>
-            <span style={{color:"#94a3b8",fontWeight:700,fontSize:15,display:"flex",alignItems:"center",gap:8}}><span style={{fontSize:12,color:C.muted,transition:"transform 0.15s",display:"inline-block",transform:isOpen?"rotate(90deg)":"rotate(0deg)"}}>▶</span>{k}</span>
-            <span style={{color:C.muted,fontSize:12}}>{gNoDisp[k].length} unidades</span>
-          </div>
-          {isOpen&&gNoDisp[k].map(p=><PhoneCard key={p.id} p={p}/>)}
-        </div>;})}
-      </div>}
-    </div>}
-  </div>;
-}
-
-// ─── ENTREGAS ──────────────────────────────────────────────────────────────
-function Entregas({user}){
-  const [list,setList]=useState([]); const [dist,setDist]=useState([]); const [inv,setInv]=useState([]);
-  const [loading,setLoading]=useState(true); const [show,setShow]=useState(false); const [saving,setSaving]=useState(false);
-  const [fs,setFs]=useState("todos"); const [toast,setToast]=useState(null); const [showQR,setShowQR]=useState(false);
-  const [fechaFiltro,setFechaFiltro]=useState(fechaHoyPeru());
-  const [verTodas,setVerTodas]=useState(false);
-  const E={inv_id:"",dist_id:"",marca:"",modelo:"",imei:"",almacenamiento:"",precio:"",pagado:"0",metodo:"transferencia",notas:""};
-  const [form,setForm]=useState(E); const ff=k=>v=>setForm(p=>({...p,[k]:v}));
-  async function load(){setLoading(true);try{const [d,r,i]=await Promise.all([api.get("entregas","?order=created_at.desc"),api.get("revendedores","?order=nombre.asc"),api.get("inventario","?estado=eq.disponible&order=marca.asc")]);setList(d);setDist(r);setInv(i);}catch(e){setToast({t:"error",m:"Error"});}setLoading(false);}
-  useEffect(()=>{load();},[]);
-
-  function handleQR(imeiOrArr){
-    const imei=Array.isArray(imeiOrArr)?imeiOrArr[0]:imeiOrArr;
-    setShowQR(false);
-    const found=inv.find(p=>p.imei===imei);
-    if(found){setForm(p=>({...p,inv_id:found.id,marca:found.marca||"",modelo:found.modelo||"",imei:found.imei||"",almacenamiento:found.almacenamiento||"",precio:(found.precio_mayorista>0?found.precio_mayorista:found.precio)||""}));if(!show)setShow(true);setToast({t:"ok",m:"✅ "+found.marca+" "+found.modelo+" cargado"});}
-    else{ff("imei")(imei);setToast({t:"ok",m:"IMEI escaneado: "+imei});}
-  }
-
-  async function submit(){
-    if(!form.dist_id){setToast({t:"error",m:"⚠️ El Distribuidor es obligatorio"});return;}
-    if(!form.modelo.trim()){setToast({t:"error",m:"⚠️ El Modelo es obligatorio"});return;}
-    if(!form.imei.trim()){setToast({t:"error",m:"⚠️ El IMEI es obligatorio"});return;}
-    const precio=+form.precio;if(precio<=0){setToast({t:"error",m:"⚠️ Ingresá un precio válido"});return;}
-    setSaving(true);
-    try{
-      // Revisión en vivo #1: si el teléfono ya no está disponible (otro trabajador
-      // ya lo procesó justo antes), no dejamos crear una entrega duplicada.
-      if(form.inv_id){
-        const chk=await api.get("inventario","?id=eq."+form.inv_id+"&select=estado");
-        if(chk&&chk[0]&&chk[0].estado!=="disponible"){
-          setToast({t:"error",m:"⚠️ Este teléfono ya no está disponible (estado: "+chk[0].estado+") — probablemente otro trabajador ya lo procesó."});
-          setSaving(false);return;
-        }
-      }
-      // Revisión en vivo #2: revisamos directo en Entregas por IMEI, por si la
-      // actualización del Inventario de una entrega previa no llegó a tiempo
-      // (ej. internet lento/cortado).
-      const imeiBuscado=form.imei.trim();
-      if(imeiBuscado){
-        const chkEnt=await api.get("entregas","?imei=eq."+encodeURIComponent(imeiBuscado)+"&estado_pago=neq.devuelto");
-        if(chkEnt&&chkEnt.length>0){
-          const e=chkEnt[0];
-          setToast({t:"error",m:"⚠️ Este IMEI ya tiene una entrega activa registrada (a "+(e.revendedor_nombre||"?")+", por "+(e.empleado_nombre||"?")+"). Revisá antes de subir de nuevo."});
-          setSaving(false);return;
-        }
-      }
-      const r=dist.find(x=>x.id===form.dist_id)||{};
-      const paid=Math.min(+(form.pagado||0),precio);
-      const ps=paid>=precio?"pagado":paid>0?"parcial":"pendiente";
-      const now=peruNow();
-      const hora=now.getUTCHours().toString().padStart(2,"0")+":"+now.getUTCMinutes().toString().padStart(2,"0");
-      const obj={inventario_id:form.inv_id||null,revendedor_id:form.dist_id,revendedor_nombre:r.nombre||"",revendedor_telefono:r.telefono||"",empleado_nombre:user.nombre,marca:form.marca,modelo:form.modelo,imei:form.imei,almacenamiento:form.almacenamiento,precio,pagado:paid,estado_pago:ps,metodo_pago:form.metodo,fecha_entrega:fechaHoyPeru(),hora_entrega:hora,notas:form.notas};
-      await api.post("entregas",obj);
-      if(form.inv_id)await api.patch("inventario",form.inv_id,{estado:"entregado"});
-      setToast({t:"ok",m:"Entrega registrada"});setForm(E);setShow(false);load();
-    }catch(e){setToast({t:"error",m:"Error: "+e.message});}
-    setSaving(false);
-  }
-
-  async function markPaid(id,precio){const d=list.find(x=>x.id===id);if(!d)return;await api.patch("entregas",id,{pagado:precio,estado_pago:"pagado"});load();}
-  async function devolver(id,invId){
-    if(!confirm("¿Devolver al inventario?"))return;
-    const d=list.find(x=>x.id===id);
-    await api.patch("entregas",id,{estado_pago:"devuelto"});
-    let restaurado=false;
-    try{
-      if(invId){
-        await api.patch("inventario",invId,{estado:"disponible"});
-        restaurado=true;
-      }else if(d&&d.imei){
-        // Entregas antiguas sin inventario_id guardado: buscamos por IMEI como respaldo.
-        const found=await api.get("inventario","?imei=eq."+encodeURIComponent(d.imei));
-        if(found&&found[0]){await api.patch("inventario",found[0].id,{estado:"disponible"});restaurado=true;}
-      }
-    }catch(e){}
-    if(restaurado)setToast({t:"ok",m:"Teléfono devuelto al inventario"});
-    else setToast({t:"error",m:"⚠️ Se marcó devuelto, pero no se encontró el teléfono en Inventario. Búscalo y usá el botón 'Disponible' para arreglarlo a mano."});
-    load();
-  }
-  async function openWA(phone,msg){const clean=phone.replace(/[^0-9]/g,"");let num=clean;if(!num.startsWith("51"))num="51"+num;const uri="whatsapp://send?phone="+num+"&text="+encodeURIComponent(msg);window.open("https://wa.me/"+num+"?text="+encodeURIComponent(msg));}
-
-  function enFecha(d){
-    if(verTodas)return true;
-    if(d.estado_pago==="pendiente"||d.estado_pago==="parcial")return true;
-    const f=(d.fecha_entrega||"").substring(0,10);
-    return f===fechaFiltro;
-  }
-  const filtered=list.filter(d=>(fs==="todos"||d.estado_pago===fs)&&enFecha(d));
-  const pendTotal=list.filter(d=>d.estado_pago!=="pagado"&&d.estado_pago!=="devuelto").reduce((a,d)=>a+(d.precio-d.pagado),0);
-
-  return <div style={{flex:1,overflowY:"auto",padding:16}}>
-    <Toast msg={toast} onClose={()=>setToast(null)}/>
-    {showQR&&<QRScanner onScan={handleQR} onClose={()=>setShowQR(false)}/>}
-    <div style={{display:"flex",alignItems:"flex-start",justifyContent:"space-between",marginBottom:12}}>
-      <div>
-        <h2 style={{fontSize:24,fontWeight:900}}>🚚 Entregas</h2>
-        {pendTotal>0&&<div style={{background:C.redDim,color:C.red,fontSize:13,fontWeight:700,marginTop:4,padding:"3px 12px",borderRadius:99,display:"inline-block"}}>🔴 Por cobrar: S/.{pendTotal.toLocaleString()}</div>}
-      </div>
-      <div style={{display:"flex",gap:8}}>
-        <button onClick={()=>setShowQR(true)} style={{background:C.blueDim,border:"2px solid "+C.blue,borderRadius:12,padding:"10px 14px",cursor:"pointer",fontSize:18,color:C.blue}}>⬛</button>
-        <Btn onClick={()=>{setShow(!show);setForm(E);}} small>{show?"✕":"+ Nueva"}</Btn>
-      </div>
-    </div>
-    {show&&<div style={{...KS,border:"2px solid "+C.blue,marginBottom:16}} className="su">
-      <div style={{color:C.blue,fontWeight:800,fontSize:17,marginBottom:14}}>📦 Nueva Entrega</div>
-      <div style={{marginBottom:12}}>
-        <label style={LS}>Distribuidor ★</label>
-        <select style={{...IS,appearance:"none",fontSize:17}} value={form.dist_id} onChange={e=>ff("dist_id")(e.target.value)}>
-          <option value="">Seleccionar distribuidor...</option>
-          {dist.map((r,i)=><option key={r.id} value={r.id}>{(i+1)+". 🏪 "+r.nombre}</option>)}
-        </select>
-      </div>
-      <div style={{marginBottom:12}}>
-        <label style={LS}>Del inventario (opcional)</label>
-        <select style={{...IS,appearance:"none"}} value={form.inv_id} onChange={e=>{const ph=inv.find(p=>p.id===e.target.value);if(ph)setForm(p=>({...p,inv_id:e.target.value,marca:ph.marca||"",modelo:ph.modelo||"",imei:ph.imei||"",almacenamiento:ph.almacenamiento||"",precio:(ph.precio_mayorista>0?ph.precio_mayorista:ph.precio)||""}));else ff("inv_id")("");}}>
-          <option value="">— Manual —</option>
-          {inv.map(p=><option key={p.id} value={p.id}>{p.marca} {p.modelo} {p.almacenamiento} — IMEI: {p.imei||"sin IMEI"}</option>)}
-        </select>
-      </div>
-      <div style={{display:"grid",gridTemplateColumns:"1fr 1fr",gap:12,marginBottom:12}}>
-        <Field label="Modelo ★" value={form.modelo} onChange={ff("modelo")} placeholder="iPhone 17 Pro"/>
-        <div><label style={LS}>IMEI ★</label><div style={{display:"flex",gap:8}}><input style={{...IS,flex:1}} value={form.imei} placeholder="15 dígitos" onChange={e=>ff("imei")(e.target.value)}/><button onClick={()=>setShowQR(true)} style={{background:C.blueDim,border:"1px solid "+C.blue,borderRadius:10,padding:"0 12px",cursor:"pointer",color:C.blue}}>⬛</button></div></div>
-        <Field label="Precio (S/.) ★" value={form.precio} onChange={ff("precio")} type="number"/>
-        <Field label="Abono (S/.)" value={form.pagado} onChange={ff("pagado")} type="number"/>
-      </div>
-      <Field label="Forma de pago" value={form.metodo} onChange={ff("metodo")} options={[{v:"transferencia",l:"Transferencia"},{v:"efectivo",l:"Efectivo"},{v:"tarjeta",l:"Tarjeta"}]}/>
-      <div style={{marginTop:12}}><Field label="Notas" value={form.notas} onChange={ff("notas")} placeholder="Notas..."/></div>
-      <div style={{display:"flex",gap:10,marginTop:14}}>
-        <Btn onClick={submit} full disabled={saving}>{saving?"⏳ Guardando...":"✓ Registrar entrega"}</Btn>
-        <Btn onClick={()=>setShow(false)} variant="ghost">✕</Btn>
-      </div>
-    </div>}
-    <div style={{...KS,marginBottom:14,display:"flex",alignItems:"center",gap:12,flexWrap:"wrap"}}>
-      <div style={{flex:1,minWidth:160}}>
-        <label style={LS}>Fecha</label>
-        <input style={IS} type="date" value={fechaFiltro} max={fechaHoyPeru()} disabled={verTodas} onChange={e=>setFechaFiltro(e.target.value)}/>
-      </div>
-      <label style={{display:"flex",alignItems:"center",gap:8,cursor:"pointer",color:C.muted,fontSize:14}}>
-        <input type="checkbox" checked={verTodas} onChange={e=>setVerTodas(e.target.checked)} style={{width:18,height:18,cursor:"pointer"}}/>
-        Ver todas las fechas
-      </label>
-      <div style={{color:C.muted,fontSize:11,fontStyle:"italic",width:"100%"}}>Las pendientes de cobro siempre se muestran, sin importar la fecha</div>
-    </div>
-    <div style={{display:"flex",gap:8,marginBottom:14,overflowX:"auto"}}>
-      {["todos","pendiente","parcial","pagado"].map(f=><button key={f} onClick={()=>setFs(f)} style={{padding:"9px 16px",borderRadius:99,border:"1px solid "+(fs===f?C.blue:C.border),background:fs===f?"rgba(56,189,248,0.15)":"rgba(255,255,255,0.05)",color:fs===f?C.blue:C.muted,cursor:"pointer",fontSize:13,fontWeight:600,whiteSpace:"nowrap"}}>{f.charAt(0).toUpperCase()+f.slice(1)}</button>)}
-      <button onClick={load} style={{padding:"9px 14px",borderRadius:99,border:"1px solid "+C.border,background:"rgba(255,255,255,0.05)",color:C.muted,cursor:"pointer"}}>🔄</button>
-    </div>
-    {loading?<Spin/>:filtered.length===0?<div style={{textAlign:"center",color:C.muted,padding:40}}>{verTodas?"Sin entregas":"Sin entregas nuevas este día"}</div>:filtered.map(d=>{
-      const falta=(d.precio||0)-(d.pagado||0);
-      const color=d.estado_pago==="pagado"?C.green:d.estado_pago==="parcial"?C.amber:C.red;
-      const phone=(d.revendedor_telefono||"");
-      const waMsg="Hola "+d.revendedor_nombre+"! Recordatorio:\n📱 "+(d.marca||"")+" "+d.modelo+"\n🔴 Debe: S/."+falta.toFixed(0);
-      return <div key={d.id} style={{...KS,borderLeft:"4px solid "+color,opacity:d.estado_pago==="pagado"?0.7:1}}>
-        <div style={{display:"flex",justifyContent:"space-between",marginBottom:8}}>
-          <div><div style={{fontWeight:800,fontSize:19,display:"flex",alignItems:"center",gap:6}}><span>🏪</span><span>{(d.revendedor_nombre||"Sin dist.").toUpperCase()}</span></div><div style={{color:C.muted,fontSize:12}}>{d.fecha_entrega} {d.hora_entrega} · {d.empleado_nombre}</div></div>
-          <span style={badge(d.estado_pago)}>{d.estado_pago}</span>
-        </div>
-        <div style={{fontWeight:600,fontSize:15,marginBottom:4}}>{d.marca} {d.modelo} {d.almacenamiento}</div>
-        {d.imei&&<div style={{fontFamily:"monospace",color:C.blue,fontSize:13,marginBottom:8}}>IMEI: {d.imei}</div>}
-        <div style={{display:"flex",justifyContent:"space-between",marginBottom:falta>0?10:0}}>
-          <span style={{color:C.green,fontWeight:900,fontSize:19}}>S/.{(d.precio||0).toLocaleString()}</span>
-          <span style={{color:C.muted,fontSize:13}}>Abonado: S/.{(d.pagado||0).toLocaleString()}</span>
-        </div>
-        {falta>0&&<div style={{background:C.redDim,borderRadius:10,padding:"8px 14px",color:C.red,fontWeight:700,marginBottom:12,textAlign:"center"}}>🔴 Debe: S/.{falta.toLocaleString()}</div>}
-        {d.estado_pago!=="pagado"&&d.estado_pago!=="devuelto"&&<div style={{display:"flex",flexWrap:"wrap",gap:8}}>
-          <Btn onClick={()=>markPaid(d.id,d.precio)} variant="success" small style={{flex:1}}>✓ Pagado</Btn>
-          <Btn onClick={()=>devolver(d.id,d.inventario_id)} variant="danger" small>↩ Dev.</Btn>
-          {phone&&<Btn onClick={()=>openWA(phone,waMsg)} variant="wa" small style={{}}>💬 WA</Btn>}
-        </div>}
-      </div>;
-    })}
-  </div>;
-}
-
-// ─── VENTAS ────────────────────────────────────────────────────────────────
-function Ventas({user}){
-  const [sales,setSales]=useState([]); const [inv,setInv]=useState([]);
-  const [loading,setLoading]=useState(true); const [show,setShow]=useState(false); const [saving,setSaving]=useState(false);
-  const [toast,setToast]=useState(null); const [showQR,setShowQR]=useState(false); const [detail,setDetail]=useState(null);
-  const isAdmin=user.rol==="admin";
-  const E={inv_id:"",imei:"",modelo:"",tienda:user.tienda||"NM 3",cliente:"",precio:"",efectivo:"",yape:"",transferencia:"",tarjeta:"",notas:"",accesorios:{}};
-  const [form,setForm]=useState(E); const ff=k=>v=>setForm(p=>({...p,[k]:v}));
-  const [accPrecios,setAccPrecios]=useState({});
-  const [fechaFiltro,setFechaFiltro]=useState(fechaHoyPeru());
-  const [verTodas,setVerTodas]=useState(false);
-  const [editSale,setEditSale]=useState(null);
-  const [editForm,setEditForm]=useState({});
-  const eff=k=>v=>setEditForm(p=>({...p,[k]:v}));
-
-  async function load(){
-    setLoading(true);
-    try{
-      let s;
-      if(isAdmin){s=await api.get("ventas","?order=created_at.desc");}
-      else{const todas=await api.get("ventas","?order=created_at.desc");const nom=(user.nombre||"").toLowerCase();s=todas.filter(v=>(v.empleado||"").toLowerCase()===nom||(v.empleado||"").toLowerCase().includes(nom));}
-      const i=await api.get("inventario","?estado=eq.disponible&order=marca.asc");
-      setSales(s);setInv(i);
-    }catch(e){setToast({t:"error",m:"Error"});}
-    setLoading(false);
-  }
-  useEffect(()=>{load();},[]);
-
-  function handleQR(imeiOrArr){const imei=Array.isArray(imeiOrArr)?imeiOrArr[0]:imeiOrArr;setShowQR(false);const found=inv.find(p=>p.imei===imei);if(found){setForm(p=>({...p,inv_id:found.id,modelo:found.marca+" "+found.modelo,imei:found.imei,precio:found.precio}));setShow(true);setToast({t:"ok",m:"✅ "+found.marca+" "+found.modelo});}else{setToast({t:"error",m:"IMEI no encontrado"});}}
-
-  async function submit(){
-    if(!form.modelo.trim()){setToast({t:"error",m:"El Modelo es obligatorio"});return;}
-    const precio=+form.precio;if(precio<=0){setToast({t:"error",m:"Ingresá un precio válido"});return;}
-    setSaving(true);
-    try{
-      // Revisión en vivo: si el teléfono ya no está disponible (otro trabajador
-      // ya lo procesó justo antes), no dejamos crear una venta duplicada.
-      if(form.inv_id){
-        const chk=await api.get("inventario","?id=eq."+form.inv_id+"&select=estado");
-        if(chk&&chk[0]&&chk[0].estado!=="disponible"){
-          setToast({t:"error",m:"⚠️ Este teléfono ya no está disponible (estado: "+chk[0].estado+") — probablemente otro trabajador ya lo procesó."});
-          setSaving(false);return;
-        }
-      }
-      const ef=+(form.efectivo||0),yp=+(form.yape||0),tr=+(form.transferencia||0),tj=+(form.tarjeta||0);
-      const accTotal=Object.entries(accPrecios).reduce((a,[k,v])=>form.accesorios[k]?a+(+v||0):a,0);
-      const totalConAcc=precio+accTotal;
-      const paid=Math.min(ef+yp+tr+tj,totalConAcc);
-      const ps=paid>=totalConAcc?"pagado":paid>0?"parcial":"pendiente";
-      const metodo=[ef>0?"Efectivo":"",yp>0?"Yape":"",tr>0?"Transferencia":"",tj>0?"Tarjeta":""].filter(Boolean).join(" + ")||"Efectivo";
-      const accList=Object.keys(form.accesorios).filter(k=>form.accesorios[k]).map(k=>{const p=accPrecios[k]||0;return k+(p>0?" (S/."+p+")":"");}).join(", ");
-      const notasFinal=[form.notas,accList?"Accesorios: "+accList:""].filter(Boolean).join(" | ");
-      await api.post("ventas",{inventario_id:form.inv_id||null,imei:form.imei,modelo:form.modelo,tienda:form.tienda,cliente:form.cliente,precio_venta:totalConAcc,pagado:paid,estado_pago:ps,metodo_pago:metodo,pago_efectivo:ef,pago_yape:yp,pago_transferencia:tr,pago_tarjeta:tj,fecha:fechaHoyPeru(),notas:notasFinal,empleado:user.nombre});
-      if(form.inv_id)await api.patch("inventario",form.inv_id,{estado:"vendido",fecha_venta:new Date().toISOString()});
-      setToast({t:"ok",m:"Venta registrada"});setForm(E);setAccPrecios({});setShow(false);load();
-    }catch(e){setToast({t:"error",m:"Error: "+e.message});}
-    setSaving(false);
-  }
-
-  async function markPaid(s){
-    const precio=s.precio_venta||0;
-    const yaPagado=(s.pago_efectivo||0)+(s.pago_yape||0)+(s.pago_transferencia||0)+(s.pago_tarjeta||0);
-    const faltante=Math.max(0,precio-yaPagado);
-    // El faltante se suma a Efectivo (asumimos que se cobró en efectivo la diferencia),
-    // así el desglose que usa la pantalla de Caja también cuadra y no queda déficit fantasma.
-    await api.patch("ventas",s.id,{pagado:precio,estado_pago:"pagado",pago_efectivo:(s.pago_efectivo||0)+faltante});
-    load();
-  }
-  function startEditSale(s){
-    setEditForm({cliente:s.cliente||"",tienda:s.tienda||"",precio_venta:s.precio_venta||"",efectivo:s.pago_efectivo||"",yape:s.pago_yape||"",transferencia:s.pago_transferencia||"",tarjeta:s.pago_tarjeta||"",notas:s.notas||""});
-    setEditSale(s);setDetail(null);
-  }
-  async function saveEditVenta(){
-    const precio=+editForm.precio_venta||0;
-    if(precio<=0){setToast({t:"error",m:"Ingresá un precio válido"});return;}
-    const ef=+editForm.efectivo||0,yp=+editForm.yape||0,tr=+editForm.transferencia||0,tj=+editForm.tarjeta||0;
-    const pagado=Math.min(ef+yp+tr+tj,precio);
-    const ps=pagado>=precio?"pagado":pagado>0?"parcial":"pendiente";
-    const metodo=[ef>0&&"Efectivo",yp>0&&"Yape",tr>0&&"Transferencia",tj>0&&"Tarjeta"].filter(Boolean).join(" + ");
-    try{
-      await api.patch("ventas",editSale.id,{cliente:editForm.cliente,tienda:editForm.tienda,precio_venta:precio,pago_efectivo:ef,pago_yape:yp,pago_transferencia:tr,pago_tarjeta:tj,pagado,estado_pago:ps,metodo_pago:metodo,notas:editForm.notas});
-      setToast({t:"ok",m:"✅ Venta corregida"});setEditSale(null);load();
-    }catch(e){setToast({t:"error",m:"Error: "+e.message});}
-  }
-  async function anularVenta(s){
-    if(!confirm("¿Anular esta venta? El teléfono volverá al inventario."))return;
-    await api.patch("ventas",s.id,{estado_pago:"anulado"});
-    try{
-      if(s.inventario_id){
-        await api.patch("inventario",s.inventario_id,{estado:"disponible",fecha_venta:null});
-      }else if(s.imei){
-        // Ventas antiguas o manuales sin inventario_id guardado: buscamos por IMEI como respaldo.
-        const found=await api.get("inventario","?imei=eq."+encodeURIComponent(s.imei));
-        if(found&&found[0])await api.patch("inventario",found[0].id,{estado:"disponible",fecha_venta:null});
-      }
-    }catch(e){}
-    setDetail(null);load();
-  }
-
-  const activas=sales.filter(s=>s.estado_pago!=="anulado"&&(verTodas||(s.fecha||"").substring(0,10)===fechaFiltro));
-  const anuladas=sales.filter(s=>s.estado_pago==="anulado"&&(verTodas||(s.fecha||"").substring(0,10)===fechaFiltro));
-  const grupos={};activas.forEach(s=>{const t=s.tienda||"Sin tienda";if(!grupos[t])grupos[t]=[];grupos[t].push(s);});
-  const cobrado=activas.reduce((a,s)=>a+(s.pagado||0),0);
-  const pendiente=activas.filter(s=>s.estado_pago!=="pagado").reduce((a,s)=>a+((s.precio_venta||0)-(s.pagado||0)),0);
-
-  return <div style={{flex:1,overflowY:"auto",padding:16}}>
-    <Toast msg={toast} onClose={()=>setToast(null)}/>
-    {showQR&&<QRScanner onScan={handleQR} onClose={()=>setShowQR(false)}/>}
-    {detail&&<div style={{position:"fixed",inset:0,background:"rgba(0,0,0,0.8)",zIndex:999,display:"flex",alignItems:"flex-end"}} onClick={()=>setDetail(null)}>
-      <div style={{width:"100%",background:C.surface,borderRadius:"24px 24px 0 0",padding:24,maxHeight:"90vh",overflowY:"auto"}} onClick={e=>e.stopPropagation()}>
-        <div style={{display:"flex",justifyContent:"space-between",marginBottom:14}}>
-          <span style={{color:C.text,fontWeight:800,fontSize:18}}>{detail.modelo}</span>
-          <button onClick={()=>setDetail(null)} style={{background:"none",border:"none",color:C.muted,cursor:"pointer",fontSize:20}}>✕</button>
-        </div>
-        {[["👤 Cliente",detail.cliente||"Sin cliente"],["🏪 Tienda",detail.tienda||""],["👤 Vendedor",detail.empleado||""],["📅 Fecha",(detail.fecha||"")+(fmtHora(detail.created_at)?"  🕐 "+fmtHora(detail.created_at):"")],["📱 IMEI",detail.imei||"—"]].map(([l,v])=><div key={l} style={{display:"flex",justifyContent:"space-between",padding:"8px 0",borderBottom:"1px solid "+C.border}}><span style={{color:C.muted,fontSize:14}}>{l}</span><span style={{color:C.text,fontWeight:600,fontSize:14}}>{v}</span></div>)}
-        <div style={{height:8}}/>
-        {[["💰 Total","S/."+(detail.precio_venta||0),C.blue],["✅ Cobrado","S/."+(detail.pagado||0),C.green],detail.precio_venta>detail.pagado&&["⏳ Pendiente","S/."+((detail.precio_venta||0)-(detail.pagado||0)),C.red]].filter(Boolean).map(([l,v,c])=><div key={l} style={{display:"flex",justifyContent:"space-between",padding:"8px 0",borderBottom:"1px solid "+C.border}}><span style={{color:C.muted,fontSize:14}}>{l}</span><span style={{color:c,fontWeight:700,fontSize:15}}>{v}</span></div>)}
-        {(detail.pago_efectivo>0||detail.pago_yape>0||detail.pago_transferencia>0||detail.pago_tarjeta>0)&&<div style={{marginTop:8}}>
-          {detail.pago_efectivo>0&&<div style={{display:"flex",justifyContent:"space-between",padding:"6px 0"}}><span style={{color:C.muted,fontSize:13}}>💵 Efectivo</span><span style={{color:C.green,fontWeight:600}}>S/.{detail.pago_efectivo}</span></div>}
-          {detail.pago_yape>0&&<div style={{display:"flex",justifyContent:"space-between",padding:"6px 0"}}><span style={{color:C.muted,fontSize:13}}>📱 Yape</span><span style={{color:C.purple,fontWeight:600}}>S/.{detail.pago_yape}</span></div>}
-          {detail.pago_transferencia>0&&<div style={{display:"flex",justifyContent:"space-between",padding:"6px 0"}}><span style={{color:C.muted,fontSize:13}}>🏦 Transferencia</span><span style={{color:C.blue,fontWeight:600}}>S/.{detail.pago_transferencia}</span></div>}
-          {detail.pago_tarjeta>0&&<div style={{display:"flex",justifyContent:"space-between",padding:"6px 0"}}><span style={{color:C.muted,fontSize:13}}>💳 Tarjeta</span><span style={{color:C.amber,fontWeight:600}}>S/.{detail.pago_tarjeta}</span></div>}
-        </div>}
-        {detail.notas&&<div style={{marginTop:8,padding:"10px 14px",background:C.amberDim,borderRadius:10,color:C.amber,fontSize:13}}>📝 {detail.notas}</div>}
-        <div style={{marginTop:16}}>
-          <Btn onClick={()=>startEditSale(detail)} small full>✏️ Editar venta</Btn>
-        </div>
-        {isAdmin&&<div style={{marginTop:16}}>
-          <div style={{color:C.muted,fontSize:11,fontWeight:700,letterSpacing:1,marginBottom:10}}>CORRECCIONES — SOLO ADMIN</div>
-          <div style={{display:"flex",gap:10}}>
-            {((detail.pago_efectivo||0)+(detail.pago_yape||0)+(detail.pago_transferencia||0)+(detail.pago_tarjeta||0))<(detail.precio_venta||0)&&<Btn onClick={async()=>{await markPaid(detail);setDetail(null);}} variant="success" small style={{flex:1}}>✓ Marcar pagado</Btn>}
-            <Btn onClick={()=>anularVenta(detail)} variant="danger" small style={{flex:1}}>✕ Anular venta</Btn>
-          </div>
-        </div>}
-      </div>
-    </div>}
-    {editSale&&<div style={{position:"fixed",inset:0,background:"rgba(0,0,0,0.8)",zIndex:999,display:"flex",alignItems:"flex-end"}} onClick={()=>setEditSale(null)}>
-      <div style={{width:"100%",background:C.surface,borderRadius:"24px 24px 0 0",padding:24,maxHeight:"90vh",overflowY:"auto"}} onClick={e=>e.stopPropagation()}>
-        <div style={{display:"flex",justifyContent:"space-between",marginBottom:14}}>
-          <span style={{color:C.text,fontWeight:800,fontSize:18}}>✏️ Editar: {editSale.modelo}</span>
-          <button onClick={()=>setEditSale(null)} style={{background:"none",border:"none",color:C.muted,cursor:"pointer",fontSize:20}}>✕</button>
-        </div>
-        <div style={{color:C.muted,fontSize:12,marginBottom:14}}>Corrige el precio, el método de pago o el cliente si algo no cuadró al momento de la venta.</div>
-        <Field label="Cliente" value={editForm.cliente} onChange={eff("cliente")} placeholder="Nombre"/>
-        <div style={{height:10}}/>
-        <Field label="Tienda" value={editForm.tienda} onChange={eff("tienda")} options={TIENDAS_EMP}/>
-        <div style={{height:10}}/>
-        <Field label="Precio total (S/.) ★" value={editForm.precio_venta} onChange={eff("precio_venta")} type="number"/>
-        <div style={{height:10}}/>
-        <div style={{background:"rgba(74,222,128,0.06)",border:"1px solid rgba(74,222,128,0.2)",borderRadius:12,padding:14,marginBottom:12}}>
-          <div style={{color:C.muted,fontSize:11,fontWeight:700,letterSpacing:1,marginBottom:10}}>FORMAS DE PAGO</div>
-          <div style={{display:"grid",gridTemplateColumns:"1fr 1fr 1fr 1fr",gap:10}}>
-            <div><label style={{...LS,color:C.green}}>💵 Efectivo</label><input style={IS} type="number" value={editForm.efectivo} placeholder="S/." onChange={e=>eff("efectivo")(e.target.value)}/></div>
-            <div><label style={{...LS,color:C.purple}}>📱 Yape</label><input style={IS} type="number" value={editForm.yape} placeholder="S/." onChange={e=>eff("yape")(e.target.value)}/></div>
-            <div><label style={{...LS,color:C.blue}}>🏦 Transf.</label><input style={IS} type="number" value={editForm.transferencia} placeholder="S/." onChange={e=>eff("transferencia")(e.target.value)}/></div>
-            <div><label style={{...LS,color:C.amber}}>💳 Tarjeta</label><input style={IS} type="number" value={editForm.tarjeta} placeholder="S/." onChange={e=>eff("tarjeta")(e.target.value)}/></div>
-          </div>
-          {(()=>{const tot=+editForm.precio_venta||0;const rec=(+editForm.efectivo||0)+(+editForm.yape||0)+(+editForm.transferencia||0)+(+editForm.tarjeta||0);const falta=tot-rec;return <div style={{marginTop:10,padding:"8px 12px",background:"rgba(74,222,128,0.1)",borderRadius:8}}>
-            <div style={{display:"flex",justifyContent:"space-between"}}><span style={{color:C.muted,fontSize:13}}>Total recibido:</span><span style={{color:C.green,fontWeight:800}}>S/.{rec.toFixed(0)}</span></div>
-            {falta>0&&<div style={{display:"flex",justifyContent:"space-between",marginTop:4}}><span style={{color:C.red,fontSize:12}}>⚠️ Falta cobrar:</span><span style={{color:C.red,fontWeight:700,fontSize:13}}>S/.{falta.toFixed(0)}</span></div>}
-          </div>;})()}
-        </div>
-        <Field label="Notas" value={editForm.notas} onChange={eff("notas")} placeholder="Notas..."/>
-        <div style={{display:"flex",gap:10,marginTop:16}}>
-          <Btn onClick={saveEditVenta} full variant="success">✓ Guardar cambios</Btn>
-          <Btn onClick={()=>setEditSale(null)} variant="ghost">✕</Btn>
-        </div>
-      </div>
-    </div>}
-    <div style={{display:"flex",alignItems:"flex-start",justifyContent:"space-between",marginBottom:12}}>
-      <div>
-        <h2 style={{fontSize:24,fontWeight:900}}>💰 Ventas</h2>
-        <div style={{display:"flex",gap:8,marginTop:4,flexWrap:"wrap"}}>
-          <span style={{background:C.greenDim,color:C.green,fontSize:12,fontWeight:700,padding:"3px 10px",borderRadius:99}}>✅ S/.{cobrado.toLocaleString()}</span>
-          {pendiente>0&&<span style={{background:C.redDim,color:C.red,fontSize:12,fontWeight:700,padding:"3px 10px",borderRadius:99}}>⏳ S/.{pendiente.toLocaleString()}</span>}
-        </div>
-      </div>
-      <div style={{display:"flex",gap:8}}>
-        <button onClick={()=>setShowQR(true)} style={{background:C.blueDim,border:"2px solid "+C.blue,borderRadius:12,padding:"10px 14px",cursor:"pointer",fontSize:18,color:C.blue}}>⬛</button>
-        <Btn onClick={()=>{setShow(!show);setForm(E);setAccPrecios({});}} small>{show?"✕":"+ Nueva"}</Btn>
-      </div>
-    </div>
-    <div style={{...KS,marginBottom:16,display:"flex",alignItems:"center",gap:12,flexWrap:"wrap"}}>
-      <div style={{flex:1,minWidth:160}}>
-        <label style={LS}>Fecha</label>
-        <input style={IS} type="date" value={fechaFiltro} max={fechaHoyPeru()} disabled={verTodas} onChange={e=>setFechaFiltro(e.target.value)}/>
-      </div>
-      <label style={{display:"flex",alignItems:"center",gap:8,cursor:"pointer",color:C.muted,fontSize:14}}>
-        <input type="checkbox" checked={verTodas} onChange={e=>setVerTodas(e.target.checked)} style={{width:18,height:18,cursor:"pointer"}}/>
-        Ver todas las fechas
-      </label>
-      {!verTodas&&fechaFiltro!==fechaHoyPeru()&&<Btn onClick={()=>setFechaFiltro(fechaHoyPeru())} variant="ghost" small>Hoy</Btn>}
-    </div>
-    {show&&<div style={{...KS,border:"2px solid "+C.green,marginBottom:16}} className="su">
-      <div style={{color:C.green,fontWeight:800,fontSize:17,marginBottom:14}}>💰 Nueva Venta</div>
-      <div style={{marginBottom:12}}>
-        <label style={LS}>Del inventario (opcional)</label>
-        <select style={{...IS,appearance:"none"}} value={form.inv_id} onChange={e=>{const ph=inv.find(p=>p.id===e.target.value);if(ph)setForm(p=>({...p,inv_id:e.target.value,modelo:ph.marca+" "+ph.modelo,imei:ph.imei||"",precio:ph.precio}));else ff("inv_id")("");}}>
-          <option value="">— Manual —</option>
-          {inv.map(p=><option key={p.id} value={p.id}>{p.marca} {p.modelo} {p.almacenamiento} — IMEI: {p.imei||"sin IMEI"}</option>)}
-        </select>
-      </div>
-      <div style={{display:"grid",gridTemplateColumns:"1fr 1fr",gap:12,marginBottom:12}}>
-        <Field label="Tienda" value={form.tienda} onChange={ff("tienda")} options={TIENDAS_EMP}/>
-        <Field label="Modelo ★" value={form.modelo} onChange={ff("modelo")} placeholder="iPhone 17 Pro"/>
-        <Field label="IMEI" value={form.imei} onChange={ff("imei")} placeholder="15 dígitos"/>
-        <Field label="Cliente" value={form.cliente} onChange={ff("cliente")} placeholder="Nombre"/>
-        <Field label="Precio (S/.) ★" value={form.precio} onChange={ff("precio")} type="number"/>
-      </div>
-      <div style={{marginBottom:12}}>
-        <div style={{color:C.muted,fontSize:11,fontWeight:700,letterSpacing:1,marginBottom:10}}>ACCESORIOS VENDIDOS</div>
-        <div style={{display:"flex",flexDirection:"column",gap:8}}>
-          {ACCS.map(acc=><div key={acc} style={{display:"flex",alignItems:"center",gap:10}}>
-            <input type="checkbox" checked={!!form.accesorios[acc]} onChange={e=>setForm(p=>({...p,accesorios:{...p.accesorios,[acc]:e.target.checked}}))} style={{width:18,height:18,cursor:"pointer"}}/>
-            <span style={{color:form.accesorios[acc]?C.text:C.muted,fontSize:15,flex:1}}>{acc}</span>
-            {form.accesorios[acc]&&<input style={{...IS,width:90,padding:"8px 10px",fontSize:14}} type="number" placeholder="S/." value={accPrecios[acc]||""} onChange={e=>setAccPrecios(p=>({...p,[acc]:e.target.value}))}/>}
-          </div>)}
-        </div>
-      </div>
-      {(()=>{const accTotal=ACCS.reduce((a,acc)=>a+(form.accesorios[acc]?Number(accPrecios[acc]||0):0),0);const precioNum=Number(form.precio||0);const totalConAcc=precioNum+accTotal;return(
-        <div style={{background:"rgba(74,222,128,0.12)",border:"1.5px solid "+C.green,borderRadius:12,padding:"12px 16px",marginBottom:12,display:"flex",justifyContent:"space-between",alignItems:"center"}}>
-          <div>
-            <div style={{color:C.muted,fontSize:11,fontWeight:700,letterSpacing:1}}>TOTAL A COBRAR</div>
-            {accTotal>0&&<div style={{color:C.muted,fontSize:12,marginTop:2}}>Teléfono S/.{precioNum.toFixed(0)} + Accesorios S/.{accTotal.toFixed(0)}</div>}
-          </div>
-          <div style={{color:C.green,fontWeight:900,fontSize:24}}>S/.{totalConAcc.toFixed(0)}</div>
-        </div>
-      );})()}
-      <div style={{background:"rgba(74,222,128,0.06)",border:"1px solid rgba(74,222,128,0.2)",borderRadius:12,padding:14,marginBottom:12}}>
-        <div style={{color:C.muted,fontSize:11,fontWeight:700,letterSpacing:1,marginBottom:10}}>FORMAS DE PAGO</div>
-        <div style={{display:"grid",gridTemplateColumns:"1fr 1fr 1fr 1fr",gap:10}}>
-          <div><label style={{...LS,color:C.green}}>💵 Efectivo</label><input style={IS} type="number" value={form.efectivo} placeholder="S/." onChange={e=>ff("efectivo")(e.target.value)}/></div>
-          <div><label style={{...LS,color:C.purple}}>📱 Yape</label><input style={IS} type="number" value={form.yape} placeholder="S/." onChange={e=>ff("yape")(e.target.value)}/></div>
-          <div><label style={{...LS,color:C.blue}}>🏦 Transf.</label><input style={IS} type="number" value={form.transferencia} placeholder="S/." onChange={e=>ff("transferencia")(e.target.value)}/></div>
-          <div><label style={{...LS,color:C.amber}}>💳 Tarjeta</label><input style={IS} type="number" value={form.tarjeta} placeholder="S/." onChange={e=>ff("tarjeta")(e.target.value)}/></div>
-        </div>
-        {(()=>{const accTotal=ACCS.reduce((a,acc)=>a+(form.accesorios[acc]?Number(accPrecios[acc]||0):0),0);const totalConAcc=Number(form.precio||0)+accTotal;const totalRecibido=Number(form.efectivo||0)+Number(form.yape||0)+Number(form.transferencia||0)+Number(form.tarjeta||0);const falta=totalConAcc-totalRecibido;return(
-          <div style={{marginTop:10,padding:"8px 12px",background:"rgba(74,222,128,0.1)",borderRadius:8}}>
-            <div style={{display:"flex",justifyContent:"space-between"}}>
-              <span style={{color:C.muted,fontSize:13}}>Total recibido:</span>
-              <span style={{color:C.green,fontWeight:800}}>S/. {totalRecibido.toFixed(0)}</span>
-            </div>
-            {falta>0&&<div style={{display:"flex",justifyContent:"space-between",marginTop:4}}>
-              <span style={{color:C.red,fontSize:12}}>⚠️ Falta cobrar:</span>
-              <span style={{color:C.red,fontWeight:700,fontSize:13}}>S/. {falta.toFixed(0)}</span>
-            </div>}
-          </div>
-        );})()}
-      </div>
-      <Field label="Notas" value={form.notas} onChange={ff("notas")} placeholder="Notas..."/>
-      <div style={{display:"flex",gap:10,marginTop:14}}>
-        <Btn onClick={submit} full disabled={saving} variant="success">{saving?"⏳ Guardando...":"✓ Registrar venta"}</Btn>
-        <Btn onClick={()=>{setShow(false);setForm(E);setAccPrecios({});}} variant="ghost">✕</Btn>
-      </div>
-    </div>}
-    <div style={{marginBottom:12}}><button onClick={load} style={{background:C.card,border:"1px solid "+C.border,borderRadius:10,padding:"8px 14px",color:C.muted,cursor:"pointer",fontSize:13}}>🔄 Actualizar</button></div>
-    {loading?<Spin/>:(activas.length===0&&anuladas.length===0)?<div style={{textAlign:"center",color:C.muted,padding:40}}>{verTodas?"Sin ventas":"Sin ventas este día"}</div>:Object.keys(grupos).sort().map(tienda=>{
-      const vs=grupos[tienda];
-      const tot=vs.reduce((a,s)=>a+(s.precio_venta||0),0);
-      const cob=vs.reduce((a,s)=>a+(s.pagado||0),0);
-      return <div key={tienda} style={{marginBottom:18}}>
-        <div style={{background:C.blueDim,border:"1px solid rgba(56,189,248,0.2)",borderRadius:12,padding:"12px 14px",marginBottom:10}}>
-          <div style={{fontWeight:800,color:C.blue,fontSize:16,marginBottom:4}}>🏪 {tienda}</div>
-          <div style={{display:"flex",gap:12}}>
-            <span style={{color:C.green,fontSize:13,fontWeight:700}}>✅ S/.{cob.toLocaleString()}</span>
-            {tot>cob&&<span style={{color:C.red,fontSize:13,fontWeight:700}}>⏳ S/.{(tot-cob).toLocaleString()}</span>}
-          </div>
-        </div>
-        {vs.map(s=>{
-          const precio=s.precio_venta||0; const pagado=s.pagado||0; const estado=s.estado_pago||"";
-          const color=estado==="pagado"?C.green:estado==="parcial"?C.amber:C.red;
-          return <div key={s.id} onClick={()=>setDetail(s)} style={{...KS,cursor:"pointer",borderLeft:"4px solid "+color,marginBottom:10,opacity:estado==="pagado"?0.7:1}}>
-            <div style={{display:"flex",justifyContent:"space-between",marginBottom:6}}>
-              <span style={{fontWeight:700,fontSize:16}}>{s.modelo}</span>
-              <div style={{display:"flex",gap:6,alignItems:"center"}}><span style={badge(estado)}>{estado}</span><span style={{color:C.muted,fontSize:16}}>›</span></div>
-            </div>
-            <div style={{color:C.muted,fontSize:13,marginBottom:8}}>{s.fecha}{fmtHora(s.created_at)&&" · "+fmtHora(s.created_at)} · {s.cliente||"Sin cliente"} · {s.empleado}</div>
-            {(s.notas||"").includes("Accesorios:")&&<div style={{color:C.amber,fontSize:12,marginBottom:8}}>{s.notas.split("Accesorios:")[1].trim()}</div>}
-            <div style={{display:"flex",justifyContent:"space-between"}}>
-              <span style={{color:C.green,fontWeight:900,fontSize:18}}>S/.{precio.toLocaleString()}</span>
-              {pagado<precio&&<span style={{color:C.red,fontSize:13,fontWeight:600}}>Debe: S/.{(precio-pagado).toLocaleString()}</span>}
-            </div>
-          </div>;
-        })}
-      </div>;
-    })}
-    {isAdmin&&anuladas.length>0&&<AnuladasSection anuladas={anuladas}/>}
-  </div>;
-}
-
-function AnuladasSection({anuladas}){
-  const [open,setOpen]=useState(false);
-  return <div style={{marginTop:8}}>
-    <div onClick={()=>setOpen(!open)} style={{background:"rgba(148,163,184,0.08)",border:"1px solid "+C.border,borderRadius:12,padding:"10px 14px",display:"flex",justifyContent:"space-between",alignItems:"center",cursor:"pointer"}}>
-      <span style={{color:C.muted,fontWeight:700,fontSize:14}}>✕ Ventas anuladas</span>
-      <span style={{color:C.muted,fontSize:13}}>{anuladas.length} {open?"▲":"▼"}</span>
-    </div>
-    {open&&anuladas.map(s=><div key={s.id} style={{...KS,marginTop:8,opacity:0.6,borderLeft:"4px solid "+C.muted}}>
-      <div style={{display:"flex",justifyContent:"space-between"}}>
-        <span style={{fontWeight:700}}>{s.modelo}</span>
-        <span style={{color:C.muted,fontSize:12}}>ANULADO</span>
-      </div>
-      <div style={{color:C.muted,fontSize:13}}>{s.fecha}{fmtHora(s.created_at)&&" · "+fmtHora(s.created_at)} · {s.cliente||"Sin cliente"} · {s.empleado} · S/.{(s.precio_venta||0).toLocaleString()}</div>
-    </div>)}
-  </div>;
-}
-
-// ─── DEUDORES ──────────────────────────────────────────────────────────────
-function Deudores({user}){
-  const [entregas,setEntregas]=useState([]); const [dist,setDist]=useState([]);
-  const [loading,setLoading]=useState(true); const [toast,setToast]=useState(null);
-  const [search,setSearch]=useState(""); const [expandido,setExpandido]=useState({}); const [abonos,setAbonos]=useState({});
-  const today=fechaHoyPeru();
-  async function load(){setLoading(true);try{const [e,d]=await Promise.all([api.get("entregas","?estado_pago=neq.pagado&estado_pago=neq.devuelto&order=fecha_entrega.asc"),api.get("revendedores","?order=nombre.asc")]);setEntregas(e);setDist(d);}catch(e){setToast({t:"error",m:"Error"});}setLoading(false);}
-  useEffect(()=>{load();},[]);
-  async function abonar(distId,monto){
-    const pend=[...entregas.filter(e=>e.revendedor_id===distId)].sort((a,b)=>a.fecha_entrega.localeCompare(b.fecha_entrega));
-    let rest=+monto;
-    for(const e of pend){if(rest<=0)break;const f=e.precio-e.pagado;const ab=Math.min(f,rest);const nv=e.pagado+ab;rest-=ab;await api.patch("entregas",e.id,{pagado:nv,estado_pago:nv>=e.precio?"pagado":"parcial"});}
-    setToast({t:"ok",m:"Pago registrado"});load();
-  }
-  async function pagarTodo(distId,pend){for(const e of pend)await api.patch("entregas",e.id,{pagado:e.precio,estado_pago:"pagado"});setToast({t:"ok",m:"Todo pagado"});load();}
-  function openWA(phone,msg){const clean=phone.replace(/[^0-9]/g,"");let num=clean;if(!num.startsWith("51"))num="51"+num;window.open("https://wa.me/"+num+"?text="+encodeURIComponent(msg));}
-
-  const grupos=dist.map(d=>{
-    const pend=entregas.filter(e=>e.revendedor_id===d.id);
-    if(!pend.length)return null;
-    const debe=pend.reduce((a,e)=>a+(e.precio-e.pagado),0);
-    const total=pend.reduce((a,e)=>a+e.precio,0);
-    const pagado=pend.reduce((a,e)=>a+e.pagado,0);
-    const venc=pend.filter(e=>e.fecha_pago_esperado<today).length;
-    return{dist:d,pend,debe,total,pagado,venc};
-  }).filter(Boolean).filter(g=>!search||g.dist.nombre.toLowerCase().includes(search.toLowerCase()));
-  const totalGlobal=grupos.reduce((a,g)=>a+g.debe,0);
-
-  return <div style={{flex:1,overflowY:"auto",padding:16}}>
-    <Toast msg={toast} onClose={()=>setToast(null)}/>
-    <div style={{display:"flex",alignItems:"center",justifyContent:"space-between",marginBottom:10}}>
-      <h2 style={{fontSize:24,fontWeight:900}}>🔴 Deudores</h2>
-      <button onClick={load} style={{background:C.card,border:"1px solid "+C.border,borderRadius:10,padding:"8px 14px",color:C.muted,cursor:"pointer"}}>🔄</button>
-    </div>
-    <div style={{background:C.redDim,color:C.red,fontSize:14,fontWeight:700,padding:"6px 14px",borderRadius:99,display:"inline-block",marginBottom:14}}>Total: S/.{totalGlobal.toLocaleString()}</div>
-    <input style={{...IS,marginBottom:14}} placeholder="🔍 Buscar distribuidor..." value={search} onChange={e=>setSearch(e.target.value)}/>
-    {loading?<Spin/>:grupos.length===0?<div style={{...KS,textAlign:"center",padding:40}}><div style={{fontSize:44,marginBottom:10}}>✅</div><div style={{color:C.green,fontWeight:800,fontSize:18}}>¡Todo cobrado!</div></div>:
-    grupos.map(({dist:d,pend,debe,total,pagado,venc})=>{
-      const isExp=expandido[d.id];
-      const phone=(d.telefono||"");
-      const msgs=pend.map(e=>"📱 "+(e.marca||"")+" "+e.modelo+" → S/."+((e.precio-e.pagado).toFixed(0))).join("\n");
-      const waMsg="Hola "+d.nombre+"! Resumen de deuda:\n\n"+msgs+"\n\n💰 Total: S/."+total.toFixed(0)+"\n✅ Pagado: S/."+pagado.toFixed(0)+"\n🔴 DEBE: S/."+debe.toFixed(0)+"\n\nPor favor coordinar pago. Gracias!";
-      return <div key={d.id} style={{...KS,borderLeft:"4px solid "+(venc>0?C.red:C.amber),marginBottom:16}}>
-        <div style={{display:"flex",justifyContent:"space-between",marginBottom:10}}>
-          <div><div style={{display:"flex",alignItems:"center",gap:6}}><span style={{fontSize:20}}>🏪</span><span style={{fontWeight:900,fontSize:21,letterSpacing:0.3}}>{(d.nombre||"").toUpperCase()}</span></div><div style={{color:C.muted,fontSize:13,marginTop:2}}>👤 {d.contacto||"—"} · 📱 {d.telefono||"Sin número"}</div>{venc>0&&<span style={{background:C.redDim,color:C.red,padding:"3px 10px",borderRadius:99,fontSize:12,fontWeight:700,marginTop:4,display:"inline-block"}}>⚠️ {venc} vencida{venc>1?"s":""}</span>}</div>
-          <div style={{textAlign:"right"}}><div style={{color:C.red,fontWeight:900,fontSize:24}}>S/.{debe.toLocaleString()}</div><div style={{color:C.muted,fontSize:12}}>de S/.{total.toLocaleString()}</div></div>
-        </div>
-        <div style={{background:C.amberDim,border:"1px solid rgba(251,191,36,0.2)",borderRadius:12,padding:14,marginBottom:12}}>
-          <div style={{color:C.amber,fontWeight:700,fontSize:14,marginBottom:10}}>💵 Registrar pago</div>
-          <div style={{display:"flex",gap:8,marginBottom:8}}>
-            <input style={{...IS,flex:1}} type="number" placeholder="Monto (S/.)" value={abonos[d.id]||""} onChange={e=>setAbonos(p=>({...p,[d.id]:e.target.value}))}/>
-            <Btn onClick={()=>{if(abonos[d.id]&&+abonos[d.id]>0){abonar(d.id,abonos[d.id]);setAbonos(p=>({...p,[d.id]:""}))}else setToast({t:"error",m:"Ingresá el monto"});}} variant="amber" small>Abonar</Btn>
-          </div>
-          <div style={{display:"flex",gap:8}}>
-            <Btn onClick={()=>{if(confirm("¿Marcar todo de "+d.nombre+" como pagado?"))pagarTodo(d.id,pend);}} variant="success" small style={{flex:1}}>✓ Todo pagado</Btn>
-            {phone&&<Btn onClick={()=>openWA(phone,waMsg)} variant="wa" small style={{flex:1}}>💬 WhatsApp</Btn>}
-          </div>
-        </div>
-        <button onClick={()=>setExpandido(p=>({...p,[d.id]:!p[d.id]}))} style={{width:"100%",background:"rgba(255,255,255,0.04)",border:"1px solid "+C.border,borderRadius:10,padding:10,color:C.muted,cursor:"pointer",fontSize:13}}>
-          {isExp?"▲ Ocultar entregas":"▼ Ver "+pend.length+" entregas"}
-        </button>
-        {isExp&&<div style={{marginTop:10}}>
-          {pend.map(e=><div key={e.id} style={{background:"rgba(255,255,255,0.04)",borderRadius:10,padding:12,marginBottom:6}}>
-            <div style={{display:"flex",justifyContent:"space-between"}}><span style={{fontWeight:600,fontSize:15}}>{e.marca} {e.modelo}</span><span style={{color:C.red,fontWeight:800}}>S/.{(e.precio-e.pagado).toLocaleString()}</span></div>
-            <div style={{color:C.muted,fontSize:12}}>{e.fecha_entrega} · {e.empleado_nombre}</div>
-            {e.fecha_pago_esperado<today&&<div style={{color:C.red,fontSize:12,fontWeight:700}}>⚠️ VENCIDO</div>}
-          </div>)}
-        </div>}
-      </div>;
-    })}
-  </div>;
-}
-
-// ─── DISTRIBUIDORES ─────────────────────────────────────────────────────────
-function Distribuidores(){
-  const [list,setList]=useState([]); const [loading,setLoading]=useState(true); const [show,setShow]=useState(false); const [toast,setToast]=useState(null);
-  const [form,setForm]=useState({nombre:"",contacto:"",telefono:"",condicion_pago:"Al día siguiente"});
-  async function load(){setLoading(true);try{setList(await api.get("revendedores","?order=nombre.asc"));}catch(e){}setLoading(false);}
-  useEffect(()=>{load();},[]);
-  async function add(){if(!form.nombre.trim()){setToast({t:"error",m:"Ingresá el nombre"});return;}try{await api.post("revendedores",form);setForm({nombre:"",contacto:"",telefono:"",condicion_pago:"Al día siguiente"});setShow(false);setToast({t:"ok",m:"Distribuidor agregado"});load();}catch(e){setToast({t:"error",m:"Error"});}}
-  async function remove(id){if(!confirm("¿Eliminar?"))return;await api.del("revendedores",id);load();}
-  return <div style={{flex:1,overflowY:"auto",padding:16}}>
-    <Toast msg={toast} onClose={()=>setToast(null)}/>
-    <div style={{display:"flex",alignItems:"center",justifyContent:"space-between",marginBottom:16}}>
-      <h2 style={{fontSize:24,fontWeight:900}}>🏪 Distribuidores</h2>
-      <Btn onClick={()=>setShow(!show)} small>{show?"✕":"+ Agregar"}</Btn>
-    </div>
-    {show&&<div style={{...KS,border:"2px solid "+C.blue,marginBottom:16}} className="su">
-      <div style={{color:C.blue,fontWeight:800,fontSize:17,marginBottom:14}}>Nuevo distribuidor</div>
-      <div style={{display:"flex",flexDirection:"column",gap:12}}>
-        <Field label="Nombre ★" value={form.nombre} onChange={v=>setForm(p=>({...p,nombre:v}))} placeholder="Móvil Express"/>
-        <Field label="Contacto" value={form.contacto} onChange={v=>setForm(p=>({...p,contacto:v}))} placeholder="Marco"/>
-        <Field label="Teléfono / WhatsApp ★" value={form.telefono} onChange={v=>setForm(p=>({...p,telefono:v}))} placeholder="999888777"/>
-        <Field label="Condición de pago" value={form.condicion_pago} onChange={v=>setForm(p=>({...p,condicion_pago:v}))} options={["En el momento","En la noche","Al día siguiente","A los 2 días"]}/>
-      </div>
-      <div style={{display:"flex",gap:10,marginTop:14}}>
-        <Btn onClick={add} full>Guardar</Btn>
-        <Btn onClick={()=>setShow(false)} variant="ghost">✕</Btn>
-      </div>
-    </div>}
-    {loading?<Spin/>:list.length===0?<div style={{textAlign:"center",color:C.muted,padding:40}}>Sin distribuidores</div>:list.map(r=><div key={r.id} style={{...KS,borderLeft:"4px solid "+C.blue,position:"relative"}}>
-      <div style={{fontWeight:900,fontSize:20,marginBottom:6,display:"flex",alignItems:"center",gap:6}}><span>🏪</span><span>{(r.nombre||"").toUpperCase()}</span></div>
-      <div style={{color:C.muted,fontSize:14}}>👤 {r.contacto||"—"}</div>
-      <div style={{color:C.muted,fontSize:14}}>📱 {r.telefono||"—"}</div>
-      <div style={{color:C.muted,fontSize:14}}>💳 {r.condicion_pago}</div>
-      <button onClick={()=>remove(r.id)} style={{position:"absolute",top:14,right:14,background:C.redDim,border:"1px solid rgba(248,113,113,0.3)",borderRadius:8,padding:"6px 12px",color:C.red,cursor:"pointer",fontSize:13}}>✕</button>
-    </div>)}
-  </div>;
-}
-
-// ─── DASHBOARD ──────────────────────────────────────────────────────────────
-function Dashboard({user}){
-  const [inv,setInv]=useState([]); const [sales,setSales]=useState([]); const [del,setDel]=useState([]); const [loading,setLoading]=useState(true);
-  async function load(){setLoading(true);try{const [i,s,d]=await Promise.all([api.get("inventario",""),api.get("ventas",""),api.get("entregas","?estado_pago=neq.pagado")]);setInv(i);setSales(s);setDel(d);}catch(e){}setLoading(false);}
-  useEffect(()=>{load();},[]);
-  const cobV=sales.reduce((a,s)=>a+(s.pagado||0),0);
-  const pendV=sales.filter(s=>s.estado_pago!=="pagado").reduce((a,s)=>a+((s.precio_venta||0)-(s.pagado||0)),0);
-  const pendE=del.reduce((a,d)=>a+((d.precio||0)-(d.pagado||0)),0);
-  const porDist={};del.forEach(d=>{const k=d.revendedor_nombre||"Sin dist.";if(!porDist[k])porDist[k]={total:0,count:0};porDist[k].total+=(d.precio-d.pagado);porDist[k].count++;});
-  return <div style={{flex:1,overflowY:"auto",padding:16}}>
-    <div style={{display:"flex",alignItems:"center",justifyContent:"space-between",marginBottom:16}}>
-      <h2 style={{fontSize:24,fontWeight:900}}>📊 Dashboard</h2>
-      <button onClick={load} style={{background:C.card,border:"1px solid "+C.border,borderRadius:10,padding:"8px 14px",color:C.muted,cursor:"pointer"}}>🔄</button>
-    </div>
-    {loading?<Spin/>:<>
-      <div style={{display:"grid",gridTemplateColumns:"1fr 1fr",gap:10,marginBottom:14}}>
-        {[["📦","Disponible",inv.filter(p=>p.estado==="disponible").length,C.blue],["💰","Cobrado","S/."+cobV.toLocaleString(),C.green],["🔴","Deuda dist.","S/."+pendE.toLocaleString(),pendE>0?C.red:C.green],["⚠️","Pend. ventas","S/."+pendV.toLocaleString(),pendV>0?C.amber:C.green]].map(([ic,l,v,c])=><div key={l} style={{background:c+"22",border:"1px solid "+c+"44",borderRadius:16,padding:"16px 14px",textAlign:"center"}}><div style={{fontSize:24,marginBottom:4}}>{ic}</div><div style={{fontSize:22,fontWeight:900,color:c}}>{v}</div><div style={{color:c,fontSize:13,fontWeight:600,marginTop:2}}>{l}</div></div>)}
-      </div>
-      <div style={KS}>
-        <div style={{color:C.muted,fontSize:11,fontWeight:700,textTransform:"uppercase",letterSpacing:1,marginBottom:12}}>Stock por local</div>
-        {TIENDAS.map(t=><div key={t} style={{display:"flex",justifyContent:"space-between",padding:"10px 0",borderBottom:"1px solid "+C.border}}>
-          <span style={{fontWeight:600,fontSize:15}}>{t}</span>
-          <div style={{display:"flex",gap:12}}><span style={{color:C.green,fontSize:14,fontWeight:700}}>{inv.filter(p=>p.ubicacion===t&&p.estado==="disponible").length} disp.</span><span style={{color:C.muted,fontSize:14}}>{inv.filter(p=>p.ubicacion===t).length} total</span></div>
-        </div>)}
-      </div>
-      {Object.keys(porDist).length>0&&<div style={KS}>
-        <div style={{color:C.muted,fontSize:11,fontWeight:700,textTransform:"uppercase",letterSpacing:1,marginBottom:12}}>Deuda por distribuidor</div>
-        {Object.entries(porDist).sort((a,b)=>b[1].total-a[1].total).map(([nombre,info])=><div key={nombre} style={{display:"flex",justifyContent:"space-between",padding:"10px 0",borderBottom:"1px solid "+C.border}}>
-          <div><div style={{fontWeight:700,fontSize:15}}>{nombre}</div><div style={{color:C.muted,fontSize:12}}>{info.count} entrega{info.count>1?"s":""}</div></div>
-          <span style={{color:C.red,fontWeight:900,fontSize:18}}>S/.{info.total.toLocaleString()}</span>
-        </div>)}
-      </div>}
-    </>}
-  </div>;
-}
-
-// ─── CIERRE DE CAJA ─────────────────────────────────────────────────────────
-function CierreCaja({user}){
-  const [ventas,setVentas]=useState([]); const [entregas,setEntregas]=useState([]); const [loading,setLoading]=useState(true);
-  const [fecha,setFecha]=useState(fechaHoyPeru()); const [cerrando,setCerrando]=useState({});
-  const isAdmin=user.rol==="admin"; const esA6=(user.tienda||"")==="NM A6";
-  const tiendas=isAdmin?TIENDAS_EMP:[user.tienda||"NM 3"];
-  async function load(){setLoading(true);try{const [v,e]=await Promise.all([api.get("ventas","?order=created_at.desc"),api.get("entregas","?order=created_at.desc")]);setVentas(v);setEntregas(e);}catch(e){}setLoading(false);}
-  useEffect(()=>{load();},[]);
-  function ventasDia(tienda){return ventas.filter(v=>(v.fecha||"").substring(0,10)===fecha&&v.tienda===tienda&&v.estado_pago!=="anulado");}
-  function pagosDist(){return entregas.filter(e=>(e.fecha_entrega||"").substring(0,10)===fecha&&(e.estado_pago==="pagado"||e.estado_pago==="parcial"));}
-  async function cerrar(tienda){
-    if(!confirm("¿Cerrar caja de "+tienda+" del "+fecha+"?"))return;
-    setCerrando(p=>({...p,[tienda]:true}));
-    const vs=ventasDia(tienda);const tot=vs.reduce((a,v)=>a+(v.precio_venta||0),0);const cob=vs.reduce((a,v)=>a+(v.pagado||0),0);
-    const ahoraPeru=peruNow();
-    const horaCierre=ahoraPeru.getUTCHours().toString().padStart(2,"0")+":"+ahoraPeru.getUTCMinutes().toString().padStart(2,"0");
-    try{await api.post("auditoria",{usuario:user.nombre,accion:"CIERRE DE CAJA - "+tienda,tabla:"ventas",detalle:"Fecha: "+fecha+" | Hora de cierre: "+horaCierre+" | Tienda: "+tienda+" | Total: S/."+tot+" | Cobrado: S/."+cob+" | Ventas: "+vs.length});}catch(e){}
-    setCerrando(p=>({...p,[tienda]:false}));
-    alert("✅ Caja "+tienda+" cerrada correctamente para el "+fecha);
-  }
-  function CajaCard({tienda}){
-    const vs=ventasDia(tienda);
-    const total=vs.reduce((a,v)=>a+(v.precio_venta||0),0);
-    const ef=vs.reduce((a,v)=>a+(v.pago_efectivo||0),0);
-    const yp=vs.reduce((a,v)=>a+(v.pago_yape||0),0);
-    const tr=vs.reduce((a,v)=>a+(v.pago_transferencia||0),0);
-    const tj=vs.reduce((a,v)=>a+(v.pago_tarjeta||0),0);
-    const cobrado=ef+yp+tr+tj;
-    const pendiente=total-cobrado;
-    const porVendedor={};vs.forEach(v=>{const emp=v.empleado||"Sin vendedor";if(!porVendedor[emp])porVendedor[emp]=[];porVendedor[emp].push(v);});
-    return <div style={{...KS,border:"1px solid rgba(56,189,248,0.2)",marginBottom:16}}>
-      <div style={{background:C.blueDim,borderRadius:10,padding:"10px 14px",marginBottom:14,display:"flex",justifyContent:"space-between",alignItems:"center"}}>
-        <span style={{color:C.blue,fontWeight:800,fontSize:16}}>🏪 {tienda}</span>
-        <span style={{color:C.muted,fontSize:13}}>{vs.length} venta{vs.length!==1?"s":""}</span>
-      </div>
-      {vs.length===0?<div style={{color:C.muted,textAlign:"center",padding:16}}>Sin ventas este día</div>:<>
-        <div style={{display:"flex",justifyContent:"space-between",padding:"8px 0",borderBottom:"1px solid "+C.border}}><span style={{color:C.muted,fontSize:14}}>📦 Total vendido</span><span style={{color:C.blue,fontWeight:700,fontSize:15}}>S/.{total.toLocaleString()}</span></div>
-        <div style={{display:"flex",justifyContent:"space-between",padding:"8px 0",borderBottom:"1px solid "+C.border}}><span style={{color:C.muted,fontSize:14}}>✅ Total cobrado</span><span style={{color:C.green,fontWeight:700,fontSize:15}}>S/.{cobrado.toLocaleString()}</span></div>
-        {pendiente>0&&<div style={{display:"flex",justifyContent:"space-between",padding:"8px 0",borderBottom:"1px solid "+C.border}}><span style={{color:C.muted,fontSize:14}}>⏳ Pendiente</span><span style={{color:C.red,fontWeight:700,fontSize:15}}>S/.{pendiente.toLocaleString()}</span></div>}
-        <div style={{margin:"14px 0 10px",color:C.muted,fontSize:11,fontWeight:700,letterSpacing:1}}>COBROS RECIBIDOS</div>
-        {[["💵 Efectivo",ef,C.green],["📱 Yape",yp,C.purple],["🏦 Transferencia",tr,C.blue],["💳 Tarjeta",tj,C.amber]].filter(([,v])=>v>0).map(([l,v,c])=><div key={l} style={{background:c+"22",border:"1px solid "+c+"44",borderRadius:10,padding:"10px 14px",marginBottom:8,display:"flex",justifyContent:"space-between"}}><span style={{color:c,fontWeight:600,fontSize:14}}>{l}</span><span style={{color:c,fontWeight:900,fontSize:16}}>S/.{v.toLocaleString()}</span></div>)}
-        <div style={{margin:"14px 0 10px",color:C.muted,fontSize:11,fontWeight:700,letterSpacing:1}}>POR VENDEDOR — QUIÉN DEBE ENTREGAR QUÉ</div>
-        {Object.keys(porVendedor).sort().map(emp=>{
-          const vEmp=porVendedor[emp];
-          const efE=vEmp.reduce((a,v)=>a+(v.pago_efectivo||0),0);
-          const ypE=vEmp.reduce((a,v)=>a+(v.pago_yape||0),0);
-          const trE=vEmp.reduce((a,v)=>a+(v.pago_transferencia||0),0);
-          const tjE=vEmp.reduce((a,v)=>a+(v.pago_tarjeta||0),0);
-          return <div key={emp} style={{background:"rgba(255,255,255,0.04)",border:"1px solid "+C.border,borderRadius:10,padding:"10px 12px",marginBottom:10}}>
-            <div style={{display:"flex",justifyContent:"space-between",marginBottom:6}}>
-              <span style={{color:C.text,fontWeight:700,fontSize:14}}>👤 {emp}</span>
-              <span style={{color:C.muted,fontSize:12}}>{vEmp.length} venta{vEmp.length!==1?"s":""}</span>
-            </div>
-            {efE>0&&<div style={{color:C.green,fontSize:13,fontWeight:600}}>💵 Debe entregar en efectivo: S/.{efE.toLocaleString()}</div>}
-            {ypE>0&&<div style={{color:C.purple,fontSize:13}}>📱 Yape: S/.{ypE.toLocaleString()}</div>}
-            {trE>0&&<div style={{color:C.blue,fontSize:13}}>🏦 Transferencia: S/.{trE.toLocaleString()}</div>}
-            {tjE>0&&<div style={{color:C.amber,fontSize:13}}>💳 Tarjeta: S/.{tjE.toLocaleString()}</div>}
-            <div style={{marginTop:6}}>
-              {vEmp.map((v,i)=><div key={i} style={{color:C.muted,fontSize:11}}>{fmtHora(v.created_at)&&fmtHora(v.created_at)+" · "}{v.modelo} · S/.{(v.precio_venta||0).toLocaleString()}</div>)}
-            </div>
-          </div>;
-        })}
-        <div style={{marginTop:4,color:C.muted,fontSize:11,fontWeight:700,letterSpacing:1,marginBottom:8}}>DETALLE DE VENTAS</div>
-        {vs.map((v,i)=><div key={i} style={{display:"flex",justifyContent:"space-between",padding:"6px 0",borderBottom:"1px solid "+C.border}}>
-          <div><div style={{fontWeight:600,fontSize:14}}>{v.modelo}</div><div style={{color:C.muted,fontSize:12}}>{fmtHora(v.created_at)&&"🕐 "+fmtHora(v.created_at)+" · "}{v.empleado} · {v.metodo_pago}</div></div>
-          <span style={{color:C.green,fontWeight:700}}>S/.{(v.precio_venta||0).toLocaleString()}</span>
-        </div>)}
-        <div style={{marginTop:14}}><Btn onClick={()=>cerrar(tienda)} full disabled={cerrando[tienda]}>{cerrando[tienda]?"⏳ Cerrando...":"🔒 Cerrar caja del día"}</Btn></div>
-      </>}
-    </div>;
-  }
-  return <div style={{flex:1,overflowY:"auto",padding:16}}>
-    <div style={{display:"flex",alignItems:"center",justifyContent:"space-between",marginBottom:16}}>
-      <h2 style={{fontSize:24,fontWeight:900}}>📋 Cierre de Caja</h2>
-      <button onClick={load} style={{background:C.card,border:"1px solid "+C.border,borderRadius:10,padding:"8px 14px",color:C.muted,cursor:"pointer"}}>🔄</button>
-    </div>
-    <div style={{...KS,marginBottom:16}}>
-      <label style={LS}>Fecha</label>
-      <input style={IS} type="date" value={fecha} max={fechaHoyPeru()} onChange={e=>setFecha(e.target.value)}/>
-    </div>
-    {loading?<Spin/>:<>
-      {tiendas.map(t=><CajaCard key={t} tienda={t}/>)}
-      {(isAdmin||esA6)&&<div style={{...KS,border:"1px solid rgba(251,191,36,0.3)",marginBottom:16}}>
-        <div style={{background:C.amberDim,borderRadius:10,padding:"10px 14px",marginBottom:14,display:"flex",justifyContent:"space-between"}}>
-          <span style={{color:C.amber,fontWeight:800,fontSize:16}}>🚚 NM A6 — Pagos distribuidores</span>
-          <span style={{color:C.muted,fontSize:13}}>{pagosDist().length}</span>
-        </div>
-        {pagosDist().length===0?<div style={{color:C.muted,textAlign:"center",padding:16}}>Sin pagos de distribuidores hoy</div>:
-        <><div style={{display:"flex",justifyContent:"space-between",padding:"8px 0",borderBottom:"1px solid "+C.border}}><span style={{color:C.muted}}>💰 Total cobrado</span><span style={{color:C.amber,fontWeight:700}}>S/.{pagosDist().reduce((a,e)=>a+(e.pagado||0),0).toLocaleString()}</span></div>
-        {pagosDist().map((e,i)=><div key={i} style={{display:"flex",justifyContent:"space-between",padding:"6px 0",borderBottom:"1px solid "+C.border}}>
-          <div><div style={{fontWeight:600,fontSize:14}}>{e.revendedor_nombre}</div><div style={{color:C.muted,fontSize:12}}>{e.marca} {e.modelo}</div></div>
-          <span style={{color:C.amber,fontWeight:700}}>S/.{(e.pagado||0).toLocaleString()}</span>
-        </div>)}</>}
-      </div>}
-    </>}
-  </div>;
-}
-
-// ─── APP ────────────────────────────────────────────────────────────────────
-// ─── USUARIOS ──────────────────────────────────────────────────────────────
-function Usuarios(){
-  const [items,setItems]=useState([]); const [loading,setLoading]=useState(true); const [toast,setToast]=useState(null);
-  const [editId,setEditId]=useState(null); const [saving,setSaving]=useState(false);
-  const [showPass,setShowPass]=useState({});
-  const E={nombre:"",username:"",password:"",rol:"empleado",tienda:""};
-  const [form,setForm]=useState(E); const ff=k=>v=>setForm(p=>({...p,[k]:v}));
-  const [showNew,setShowNew]=useState(false);
-
-  async function load(){setLoading(true);try{setItems(await api.get("usuarios","?order=nombre.asc"));}catch(e){setToast({t:"error",m:"Error cargando usuarios"});}setLoading(false);}
-  useEffect(()=>{load();},[]);
-
-  function startEdit(u){setEditId(u.id);setForm({nombre:u.nombre||"",username:u.username||"",password:u.password||"",rol:u.rol||"empleado",tienda:u.tienda||""});setShowNew(false);}
-  function cancelEdit(){setEditId(null);setForm(E);setShowNew(false);}
-
-  async function save(){
-    if(!form.nombre.trim()||!form.username.trim()||!form.password.trim()){setToast({t:"error",m:"Nombre, usuario y contraseña son obligatorios"});return;}
-    setSaving(true);
-    try{
-      const obj={nombre:form.nombre.trim(),username:form.username.trim().toLowerCase(),password:form.password,rol:form.rol,tienda:form.tienda||null};
-      if(editId){await api.patch("usuarios",editId,obj);setToast({t:"ok",m:"Usuario actualizado"});}
-      else{await api.post("usuarios",obj);setToast({t:"ok",m:"Usuario creado"});}
-      cancelEdit();load();
-    }catch(e){setToast({t:"error",m:"Error: "+e.message});}
-    setSaving(false);
-  }
-
-  function UserForm({title}){
-    return <div style={{...KS,border:"2px solid "+C.blue,marginBottom:16}} className="su">
-      <div style={{color:C.blue,fontWeight:800,fontSize:17,marginBottom:14}}>{title}</div>
-      <div style={{display:"grid",gridTemplateColumns:"1fr 1fr",gap:12,marginBottom:12}}>
-        <Field label="Nombre completo" value={form.nombre} onChange={ff("nombre")} placeholder="Ej: Jeremy"/>
-        <Field label="Usuario (login)" value={form.username} onChange={ff("username")} placeholder="Ej: jeremy"/>
-        <Field label="Contraseña" value={form.password} onChange={ff("password")} placeholder="Nueva contraseña"/>
-        <div><label style={LS}>Rol</label><select style={{...IS,appearance:"none"}} value={form.rol} onChange={e=>ff("rol")(e.target.value)}>
-          <option value="admin">Admin</option>
-          <option value="empleado">Empleado (rota de tienda)</option>
-          <option value="tienda">Tienda (fija)</option>
-          <option value="almacen">Almacén</option>
-        </select></div>
-        {(form.rol==="tienda"||form.rol==="almacen")&&<Field label="Tienda fija" value={form.tienda} onChange={ff("tienda")} options={TIENDAS}/>}
-      </div>
-      <div style={{display:"flex",gap:10}}>
-        <Btn onClick={save} full disabled={saving}>{saving?"⏳ Guardando...":"✓ Guardar"}</Btn>
-        <Btn onClick={cancelEdit} variant="ghost">✕</Btn>
-      </div>
-    </div>;
-  }
-
-  return <div style={{flex:1,overflowY:"auto",padding:16}}>
-    <Toast msg={toast} onClose={()=>setToast(null)}/>
-    <div style={{display:"flex",alignItems:"center",justifyContent:"space-between",marginBottom:16}}>
-      <h2 style={{fontSize:24,fontWeight:900,color:C.text}}>👤 Usuarios</h2>
-      <div style={{display:"flex",gap:8}}>
-        <button onClick={load} style={{background:C.card,border:"1px solid "+C.border,borderRadius:12,padding:"10px 14px",color:C.muted,cursor:"pointer"}}>🔄</button>
-        <Btn onClick={()=>{setShowNew(!showNew);setEditId(null);setForm(E);}} small>{showNew?"✕":"+ Nuevo"}</Btn>
-      </div>
-    </div>
-    {showNew&&<UserForm title="➕ Nuevo usuario"/>}
-    {loading?<Spin/>:items.length===0?<div style={{textAlign:"center",color:C.muted,padding:40}}>Sin usuarios</div>:
-      items.map(u=>editId===u.id?<UserForm key={u.id} title={"✏️ Editar: "+u.nombre}/>:
-        <div key={u.id} style={{...KS,marginBottom:10}}>
-          <div style={{display:"flex",justifyContent:"space-between",alignItems:"flex-start"}}>
-            <div>
-              <div style={{fontWeight:800,fontSize:16,color:C.text}}>{u.nombre}</div>
-              <div style={{color:C.muted,fontSize:13,marginTop:2}}>Usuario: <span style={{color:C.blue,fontFamily:"monospace"}}>{u.username}</span></div>
-              <div style={{color:C.muted,fontSize:13,marginTop:2,display:"flex",alignItems:"center",gap:6}}>
-                Contraseña: <span style={{fontFamily:"monospace"}}>{showPass[u.id]?u.password:"••••••••"}</span>
-                <span onClick={()=>setShowPass(p=>({...p,[u.id]:!p[u.id]}))} style={{cursor:"pointer",color:C.blue,fontSize:12}}>{showPass[u.id]?"ocultar":"ver"}</span>
-              </div>
-              <div style={{marginTop:8,display:"flex",gap:6,flexWrap:"wrap"}}>
-                <span style={{background:C.blueDim,color:C.blue,padding:"2px 10px",borderRadius:99,fontSize:12,fontWeight:700}}>{u.rol}</span>
-                {u.tienda&&<span style={{background:C.amberDim,color:C.amber,padding:"2px 10px",borderRadius:99,fontSize:12}}>{u.tienda}</span>}
-              </div>
-            </div>
-            <button onClick={()=>startEdit(u)} style={{background:"rgba(56,189,248,0.1)",border:"1px solid rgba(56,189,248,0.3)",borderRadius:8,padding:"6px 14px",color:C.blue,cursor:"pointer",fontSize:13}}>✏️ Editar</button>
-          </div>
-        </div>
-      )}
-  </div>;
-}
-
-function App(){
-  const [user,setUser]=useState(null); const [tab,setTab]=useState("dashboard");
-  if(!user)return <div style={{display:"flex",flexDirection:"column",height:"100vh"}}><Login onLogin={u=>{setUser(u);setTab(u.rol==="admin"?"dashboard":"inventario");}}/></div>;
-  const isAdmin=user.rol==="admin";
-  const allTabs=[
-    {id:"dashboard",label:"Inicio",icon:"📊",roles:["admin"]},
-    {id:"inventario",label:"Inventario",icon:"📦",roles:["admin","almacen","tienda","empleado"]},
-    {id:"entregas",label:"Entregas",icon:"🚚",roles:["admin","almacen","empleado"]},
-    {id:"ventas",label:"Ventas",icon:"💰",roles:["admin","tienda","empleado"]},
-    {id:"deudores",label:"Deudores",icon:"🔴",roles:["admin"]},
-    {id:"distribuidores",label:"Distrib.",icon:"🏪",roles:["admin"]},
-    {id:"caja",label:"Caja",icon:"📋",roles:["admin","empleado","tienda"]},
-    {id:"usuarios",label:"Usuarios",icon:"👤",roles:["admin"]},
-  ];
-  const tabs=allTabs.filter(t=>t.roles.includes(user.rol));
-  return <div style={{display:"flex",flexDirection:"column",height:"100vh"}}>
-    <div className="app-header" style={{background:"#0d1424",padding:"12px 16px",display:"flex",alignItems:"center",justifyContent:"space-between",borderBottom:"1px solid rgba(99,179,237,0.15)",flexShrink:0,paddingTop:"max(12px,env(safe-area-inset-top))"}}>
-      <div style={{display:"flex",alignItems:"center",gap:8}}>
-        <span style={{fontSize:18}}>📱</span>
-        <span style={{fontWeight:900,fontSize:18,color:"#fff"}}>IMPORT</span>
-        <span style={{fontWeight:900,fontSize:18,color:C.blue}}>CELLS</span>
-        <span style={{background:"rgba(74,222,128,0.2)",color:C.green,fontSize:10,fontWeight:700,padding:"2px 8px",borderRadius:99}}>🟢 LIVE</span>
-      </div>
-      <div style={{display:"flex",alignItems:"center",gap:8}}>
-        {user.tienda&&<span style={{color:C.muted,fontSize:12}}>{user.tienda}</span>}
-        <span style={{color:C.muted,fontSize:13}}>{user.nombre}</span>
-        <button onClick={()=>setUser(null)} style={{background:C.redDim,border:"1px solid rgba(248,113,113,0.3)",borderRadius:8,padding:"6px 12px",color:C.red,cursor:"pointer",fontSize:13,fontWeight:700}}>Salir</button>
-      </div>
-    </div>
-    <div className="app-content" style={{flex:1,overflow:"hidden",display:"flex",flexDirection:"column"}}>
-      {tab==="dashboard"&&<Dashboard user={user}/>}
-      {tab==="inventario"&&<Inventario user={user}/>}
-      {tab==="entregas"&&<Entregas user={user}/>}
-      {tab==="ventas"&&<Ventas user={user}/>}
-      {tab==="deudores"&&<Deudores user={user}/>}
-      {tab==="distribuidores"&&<Distribuidores/>}
-      {tab==="caja"&&<CierreCaja user={user}/>}
-      {tab==="usuarios"&&<Usuarios/>}
-    </div>
-    <div className="app-nav" style={{background:"#0d1424",borderTop:"1px solid rgba(99,179,237,0.15)",display:"flex",flexShrink:0,paddingBottom:"max(14px,env(safe-area-inset-bottom))"}}>
-      {tabs.map(t=><button key={t.id} className="app-nav-btn" onClick={()=>setTab(t.id)} style={{flex:1,display:"flex",flexDirection:"column",alignItems:"center",justifyContent:"center",padding:"12px 4px 8px",background:"none",border:"none",cursor:"pointer",gap:4,minHeight:72,position:"relative"}}>
-        {tab===t.id&&<div className="app-nav-underline" style={{position:"absolute",top:0,left:"20%",right:"20%",height:3,borderRadius:"0 0 4px 4px",background:C.blue}}/>}
-        <span className="nav-icon" style={{fontSize:tab===t.id?32:26,lineHeight:1}}>{t.icon}</span>
-        <span style={{fontSize:11,color:tab===t.id?C.blue:C.muted,fontWeight:tab===t.id?800:500}}>{t.label}</span>
-      </button>)}
-    </div>
-  </div>;
-}
-ReactDOM.createRoot(document.getElementById("root")).render(<App/>);
-</script>
-<script>if('serviceWorker' in navigator){window.addEventListener('load',function(){navigator.serviceWorker.register('/sw.js').catch(function(){});});}</script>
-</body>
-</html>
