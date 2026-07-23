@@ -411,9 +411,11 @@ function Inventario({user}){
 
   function PhoneCard({p}){
     const isReg=p.tipo==="registrado";
-    const fi=p.fecha_ingreso?new Date(p.fecha_ingreso):null;
-    const fv=p.fecha_venta?new Date(p.fecha_venta):null;
-    const fmt=d=>d?`${d.getDate().toString().padLeft?d.getDate().toString().padStart(2,"0"):d.getDate()}/${(d.getMonth()+1).toString().padStart(2,"0")} ${d.getHours().toString().padStart(2,"0")}:${d.getMinutes().toString().padStart(2,"0")}`:"";
+    // Restamos 5h fijas (hora de Perú) en vez de usar getHours()/getDate() locales,
+    // que dependen de cómo esté configurado el celular de cada quien.
+    const fi=p.fecha_ingreso?new Date(new Date(p.fecha_ingreso).getTime()-5*60*60*1000):null;
+    const fv=p.fecha_venta?new Date(new Date(p.fecha_venta).getTime()-5*60*60*1000):null;
+    const fmt=d=>d?`${d.getUTCDate().toString().padStart(2,"0")}/${(d.getUTCMonth()+1).toString().padStart(2,"0")} ${d.getUTCHours().toString().padStart(2,"0")}:${d.getUTCMinutes().toString().padStart(2,"0")}`:"";
     return <div style={{...KS,marginBottom:10,borderLeft:"4px solid "+(isReg?C.green:C.blue),opacity:p.estado==="disponible"?1:0.7}}>
       {p.imei&&<div style={{fontFamily:"monospace",color:C.blue,fontSize:13,background:C.blueDim,padding:"3px 10px",borderRadius:8,display:"inline-block",marginBottom:6}}>IMEI: {p.imei}</div>}
       {p.imei2&&<div style={{fontFamily:"monospace",color:C.purple,fontSize:13,background:C.purpleDim,padding:"3px 10px",borderRadius:8,display:"inline-block",marginBottom:6,marginLeft:6}}>IMEI 2: {p.imei2}</div>}
@@ -604,11 +606,33 @@ function Entregas({user}){
     const precio=+form.precio;if(precio<=0){setToast({t:"error",m:"⚠️ Ingresá un precio válido"});return;}
     setSaving(true);
     try{
+      // Revisión en vivo #1: si el teléfono ya no está disponible (otro trabajador
+      // ya lo procesó justo antes), no dejamos crear una entrega duplicada.
+      if(form.inv_id){
+        const chk=await api.get("inventario","?id=eq."+form.inv_id+"&select=estado");
+        if(chk&&chk[0]&&chk[0].estado!=="disponible"){
+          setToast({t:"error",m:"⚠️ Este teléfono ya no está disponible (estado: "+chk[0].estado+") — probablemente otro trabajador ya lo procesó."});
+          setSaving(false);return;
+        }
+      }
+      // Revisión en vivo #2: revisamos directo en Entregas por IMEI, por si la
+      // actualización del Inventario de una entrega previa no llegó a tiempo
+      // (ej. internet lento/cortado).
+      const imeiBuscado=form.imei.trim();
+      if(imeiBuscado){
+        const chkEnt=await api.get("entregas","?imei=eq."+encodeURIComponent(imeiBuscado)+"&estado_pago=neq.devuelto");
+        if(chkEnt&&chkEnt.length>0){
+          const e=chkEnt[0];
+          setToast({t:"error",m:"⚠️ Este IMEI ya tiene una entrega activa registrada (a "+(e.revendedor_nombre||"?")+", por "+(e.empleado_nombre||"?")+"). Revisá antes de subir de nuevo."});
+          setSaving(false);return;
+        }
+      }
       const r=dist.find(x=>x.id===form.dist_id)||{};
       const paid=Math.min(+(form.pagado||0),precio);
       const ps=paid>=precio?"pagado":paid>0?"parcial":"pendiente";
-      const now=new Date();
-      const obj={inventario_id:form.inv_id||null,revendedor_id:form.dist_id,revendedor_nombre:r.nombre||"",revendedor_telefono:r.telefono||"",empleado_nombre:user.nombre,marca:form.marca,modelo:form.modelo,imei:form.imei,almacenamiento:form.almacenamiento,precio,pagado:paid,estado_pago:ps,metodo_pago:form.metodo,fecha_entrega:now.toISOString().substring(0,10),hora_entrega:now.toTimeString().substring(0,5),notas:form.notas};
+      const now=peruNow();
+      const hora=now.getUTCHours().toString().padStart(2,"0")+":"+now.getUTCMinutes().toString().padStart(2,"0");
+      const obj={inventario_id:form.inv_id||null,revendedor_id:form.dist_id,revendedor_nombre:r.nombre||"",revendedor_telefono:r.telefono||"",empleado_nombre:user.nombre,marca:form.marca,modelo:form.modelo,imei:form.imei,almacenamiento:form.almacenamiento,precio,pagado:paid,estado_pago:ps,metodo_pago:form.metodo,fecha_entrega:fechaHoyPeru(),hora_entrega:hora,notas:form.notas};
       await api.post("entregas",obj);
       if(form.inv_id)await api.patch("inventario",form.inv_id,{estado:"entregado"});
       setToast({t:"ok",m:"Entrega registrada"});setForm(E);setShow(false);load();
@@ -664,9 +688,9 @@ function Entregas({user}){
       <div style={{color:C.blue,fontWeight:800,fontSize:17,marginBottom:14}}>📦 Nueva Entrega</div>
       <div style={{marginBottom:12}}>
         <label style={LS}>Distribuidor ★</label>
-        <select style={{...IS,appearance:"none"}} value={form.dist_id} onChange={e=>ff("dist_id")(e.target.value)}>
+        <select style={{...IS,appearance:"none",fontSize:17}} value={form.dist_id} onChange={e=>ff("dist_id")(e.target.value)}>
           <option value="">Seleccionar distribuidor...</option>
-          {dist.map(r=><option key={r.id} value={r.id}>{r.nombre}</option>)}
+          {dist.map((r,i)=><option key={r.id} value={r.id}>{(i+1)+". 🏪 "+r.nombre}</option>)}
         </select>
       </div>
       <div style={{marginBottom:12}}>
@@ -766,6 +790,15 @@ function Ventas({user}){
     const precio=+form.precio;if(precio<=0){setToast({t:"error",m:"Ingresá un precio válido"});return;}
     setSaving(true);
     try{
+      // Revisión en vivo: si el teléfono ya no está disponible (otro trabajador
+      // ya lo procesó justo antes), no dejamos crear una venta duplicada.
+      if(form.inv_id){
+        const chk=await api.get("inventario","?id=eq."+form.inv_id+"&select=estado");
+        if(chk&&chk[0]&&chk[0].estado!=="disponible"){
+          setToast({t:"error",m:"⚠️ Este teléfono ya no está disponible (estado: "+chk[0].estado+") — probablemente otro trabajador ya lo procesó."});
+          setSaving(false);return;
+        }
+      }
       const ef=+(form.efectivo||0),yp=+(form.yape||0),tr=+(form.transferencia||0),tj=+(form.tarjeta||0);
       const accTotal=Object.entries(accPrecios).reduce((a,[k,v])=>form.accesorios[k]?a+(+v||0):a,0);
       const totalConAcc=precio+accTotal;
