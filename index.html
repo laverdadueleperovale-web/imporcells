@@ -125,13 +125,13 @@ function QRScanner({onScan,onClose}){
   useEffect(()=>{
     let cancelled=false;
     const scanner=new Html5Qrcode("qr-web-box",{
+      // Solo los formatos que realmente necesitamos — cuantos menos, menos memoria
+      // usa el celular por cada foto que procesa. Antes revisaba 7 formatos distintos
+      // 10 veces por segundo, y eso es lo que probablemente hacía que Safari en iPhone
+      // se quedara sin memoria y recargara la página solo al buscar el segundo IMEI.
       formatsToSupport:[
         Html5QrcodeSupportedFormats.CODE_128,
-        Html5QrcodeSupportedFormats.CODE_39,
         Html5QrcodeSupportedFormats.EAN_13,
-        Html5QrcodeSupportedFormats.EAN_8,
-        Html5QrcodeSupportedFormats.UPC_A,
-        Html5QrcodeSupportedFormats.ITF,
         Html5QrcodeSupportedFormats.QR_CODE,
       ],
       verbose:false,
@@ -156,7 +156,7 @@ function QRScanner({onScan,onClose}){
       setCamError(null);setStarting(true);
       // Intento 1: pedir directamente la cámara trasera
       try{
-        await scanner.start({facingMode:"environment"},{fps:10,qrbox:{width:300,height:160}},onDetect,()=>{});
+        await scanner.start({facingMode:"environment"},{fps:5,qrbox:{width:280,height:140}},onDetect,()=>{});
         if(!cancelled)setStarting(false);
         return;
       }catch(e1){ if(cancelled)return; }
@@ -165,7 +165,7 @@ function QRScanner({onScan,onClose}){
         const cams=await Html5Qrcode.getCameras();
         if(!cams||cams.length===0)throw new Error("No se encontró ninguna cámara disponible.");
         const cam=cams[cams.length-1];
-        await scanner.start({deviceId:{exact:cam.id}},{fps:10,qrbox:{width:300,height:160}},onDetect,()=>{});
+        await scanner.start({deviceId:{exact:cam.id}},{fps:5,qrbox:{width:280,height:140}},onDetect,()=>{});
         if(!cancelled)setStarting(false);
         return;
       }catch(e2){
