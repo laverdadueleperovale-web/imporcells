@@ -115,12 +115,19 @@ function QRScanner({onScan,onClose}){
   // larguísimo de puros dígitos (20+, como el EID de eSIM de Samsung, 32 dígitos),
   // NO se toca — ahí no hay ningún IMEI real adentro, inventar uno sería peligroso.
   // Si mezcla texto con el IMEI, ahí sí extrae los 15 dígitos de adentro.
-  function extractImei(val){
+  // Devuelve la lista de IMEIs encontrados en un código leído (normalmente 1,
+  // a veces 2 si el código los trae pegados). 15 dígitos = 1 IMEI. 30 dígitos =
+  // algunas cajas de Samsung pegan los dos IMEI juntos en un mismo código
+  // (15+15) — se parte en dos. 20+ dígitos que no sean exactamente 30 =
+  // probablemente el EID (32 dígitos), no se inventa nada ahí. Texto mezclado
+  // con números = se saca el tramo de 15 dígitos de adentro.
+  function extractImeis(val){
     const clean=val.replace(/\s/g,"");
-    if(/^\d{15}$/.test(clean))return clean;
-    if(/^\d+$/.test(clean)&&clean.length>=20)return null;
+    if(/^\d{15}$/.test(clean))return [clean];
+    if(/^\d{30}$/.test(clean))return [clean.substring(0,15),clean.substring(15)];
+    if(/^\d+$/.test(clean)&&clean.length>=20)return [];
     const m=clean.match(/\d{15}/);
-    return m?m[0]:null;
+    return m?[m[0]]:[];
   }
   useEffect(()=>{
     let cancelled=false;
@@ -139,14 +146,16 @@ function QRScanner({onScan,onClose}){
     scannerRef.current=scanner;
     const onDetect=text=>{
       const clean=text.replace(/\s/g,"");
-      const imei=extractImei(clean);
-      if(imei){
-        if(foundRef.current.length<2&&!foundRef.current.includes(imei)){
-          foundRef.current=[...foundRef.current,imei];
-          setFound(foundRef.current);
-          setRejected(null);
-          setRejectedHint(null);
+      const imeis=extractImeis(clean);
+      if(imeis.length>0){
+        for(const imei of imeis){
+          if(foundRef.current.length<2&&!foundRef.current.includes(imei)){
+            foundRef.current=[...foundRef.current,imei];
+          }
         }
+        setFound(foundRef.current);
+        setRejected(null);
+        setRejectedHint(null);
       }else if(foundRef.current.length===0){
         setRejected(clean.length>20?clean.substring(0,20)+"...":clean);
         setRejectedHint(/^\d+$/.test(clean)&&clean.length>=20?"Eso es el EID (identificador eSIM), no el IMEI — buscá la barra de código que dice 'IMEI 1'.":null);
@@ -156,7 +165,7 @@ function QRScanner({onScan,onClose}){
       setCamError(null);setStarting(true);
       // Intento 1: pedir directamente la cámara trasera
       try{
-        await scanner.start({facingMode:"environment"},{fps:5,qrbox:{width:280,height:140}},onDetect,()=>{});
+        await scanner.start({facingMode:"environment",width:{ideal:640},height:{ideal:480}},{fps:5,qrbox:{width:280,height:140}},onDetect,()=>{});
         if(!cancelled)setStarting(false);
         return;
       }catch(e1){ if(cancelled)return; }
@@ -165,7 +174,7 @@ function QRScanner({onScan,onClose}){
         const cams=await Html5Qrcode.getCameras();
         if(!cams||cams.length===0)throw new Error("No se encontró ninguna cámara disponible.");
         const cam=cams[cams.length-1];
-        await scanner.start({deviceId:{exact:cam.id}},{fps:5,qrbox:{width:280,height:140}},onDetect,()=>{});
+        await scanner.start({deviceId:{exact:cam.id},width:{ideal:640},height:{ideal:480}},{fps:5,qrbox:{width:280,height:140}},onDetect,()=>{});
         if(!cancelled)setStarting(false);
         return;
       }catch(e2){
@@ -367,20 +376,23 @@ function Inventario({user}){
   async function imeiYaExiste(imei,excludeId){
     const v=(imei||"").trim();
     if(!v)return false;
-    try{
-      const r1=await api.get("inventario","?imei=eq."+encodeURIComponent(v));
-      const r2=await api.get("inventario","?imei2=eq."+encodeURIComponent(v));
-      const all=[...r1,...r2].filter(x=>x.id!==excludeId);
-      return all.length>0;
-    }catch(e){return false;}
+    const r1=await api.get("inventario","?imei=eq."+encodeURIComponent(v));
+    const r2=await api.get("inventario","?imei2=eq."+encodeURIComponent(v));
+    const all=[...r1,...r2].filter(x=>x.id!==excludeId);
+    return all.length>0;
   }
 
   async function add(){
     if(!form.marca||!form.modelo.trim()){setToast({t:"error",m:"Marca y Modelo son obligatorios"});return;}
     if(!form.precio||+form.precio<=0){setToast({t:"error",m:"Ingresá un precio válido"});return;}
     const imei1=(form.imei||"").trim(),imei2=(form.imei2||"").trim();
-    if(imei1&&await imeiYaExiste(imei1)){setToast({t:"error",m:"⚠️ Ese IMEI ya existe en el inventario"});return;}
-    if(imei2&&await imeiYaExiste(imei2)){setToast({t:"error",m:"⚠️ Ese IMEI 2 ya existe en el inventario"});return;}
+    try{
+      if(imei1&&await imeiYaExiste(imei1)){setToast({t:"error",m:"⚠️ Ese IMEI ya existe en el inventario"});return;}
+      if(imei2&&await imeiYaExiste(imei2)){setToast({t:"error",m:"⚠️ Ese IMEI 2 ya existe en el inventario"});return;}
+    }catch(e){
+      setToast({t:"error",m:"⚠️ No se pudo verificar si el IMEI ya existe (revisá tu conexión) — no se guardó, intentá de nuevo."});
+      return;
+    }
     setSaving(true);
     const obj={imei:imei1,imei2:imei2,marca:form.marca,modelo:form.modelo,color:form.color,almacenamiento:form.almacenamiento,ram:form.ram,precio:+form.precio,precio_mayorista:+(form.precio_mayorista||form.precio||0),costo:+(form.costo||0),ubicacion:form.ubicacion,tipo:form.tipo||"libre",proveedor:form.proveedor||"",estado:"disponible",notas:form.notas,fecha_ingreso:new Date().toISOString()};
     try{
@@ -603,6 +615,19 @@ function Entregas({user}){
   const [fs,setFs]=useState("todos"); const [toast,setToast]=useState(null); const [showQR,setShowQR]=useState(false);
   const [fechaFiltro,setFechaFiltro]=useState(fechaHoyPeru());
   const [verTodas,setVerTodas]=useState(false);
+  const isAdmin=user.rol==="admin";
+  const [cambiarDistFor,setCambiarDistFor]=useState(null);
+  const [nuevoDistSel,setNuevoDistSel]=useState("");
+  async function guardarNuevoDist(){
+    if(!cambiarDistFor||!nuevoDistSel||nuevoDistSel===cambiarDistFor.revendedor_id){setCambiarDistFor(null);return;}
+    const r=dist.find(x=>x.id===nuevoDistSel)||{};
+    try{
+      await api.patch("entregas",cambiarDistFor.id,{revendedor_id:nuevoDistSel,revendedor_nombre:r.nombre||"",revendedor_telefono:r.telefono||""});
+      await api.post("auditoria",{usuario:user.nombre,accion:"Corrigió distribuidor de entrega",tabla:"entregas",detalle:(cambiarDistFor.marca||"")+" "+(cambiarDistFor.modelo||"")+" → ahora: "+(r.nombre||"")});
+      setToast({t:"ok",m:"✅ Distribuidor corregido"});
+      setCambiarDistFor(null);load();
+    }catch(e){setToast({t:"error",m:"Error: "+e.message});}
+  }
   const E={inv_id:"",dist_id:"",marca:"",modelo:"",imei:"",almacenamiento:"",precio:"",pagado:"0",metodo:"transferencia",notas:""};
   const [form,setForm]=useState(E); const ff=k=>v=>setForm(p=>({...p,[k]:v}));
   async function load(){setLoading(true);try{const [d,r,i]=await Promise.all([api.get("entregas","?order=created_at.desc"),api.get("revendedores","?order=nombre.asc"),api.get("inventario","?estado=eq.disponible&order=marca.asc")]);setList(d);setDist(r);setInv(i);}catch(e){setToast({t:"error",m:"Error"});}setLoading(false);}
@@ -751,7 +776,7 @@ function Entregas({user}){
       const waMsg="Hola "+d.revendedor_nombre+"! Recordatorio:\n📱 "+(d.marca||"")+" "+d.modelo+"\n🔴 Debe: S/."+falta.toFixed(0);
       return <div key={d.id} style={{...KS,borderLeft:"4px solid "+color,opacity:d.estado_pago==="pagado"?0.7:1}}>
         <div style={{display:"flex",justifyContent:"space-between",marginBottom:8}}>
-          <div><div style={{fontWeight:800,fontSize:19,display:"flex",alignItems:"center",gap:6}}><span>🏪</span><span>{(d.revendedor_nombre||"Sin dist.").toUpperCase()}</span></div><div style={{color:C.muted,fontSize:12}}>{d.fecha_entrega} {d.hora_entrega} · {d.empleado_nombre}</div></div>
+          <div><div style={{fontWeight:800,fontSize:19,display:"flex",alignItems:"center",gap:6}}><span>🏪</span><span>{(d.revendedor_nombre||"Sin dist.").toUpperCase()}</span>{isAdmin&&<span onClick={()=>{setCambiarDistFor(d);setNuevoDistSel(d.revendedor_id||"");}} style={{cursor:"pointer",fontSize:14,color:C.blue}}>✏️</span>}</div><div style={{color:C.muted,fontSize:12}}>{d.fecha_entrega} {d.hora_entrega} · {d.empleado_nombre}</div></div>
           <span style={badge(d.estado_pago)}>{d.estado_pago}</span>
         </div>
         <div style={{fontWeight:600,fontSize:15,marginBottom:4}}>{d.marca} {d.modelo} {d.almacenamiento}</div>
@@ -768,6 +793,20 @@ function Entregas({user}){
         </div>}
       </div>;
     })}
+    {cambiarDistFor&&<div style={{position:"fixed",inset:0,background:"rgba(0,0,0,0.7)",zIndex:998,display:"flex",alignItems:"center",justifyContent:"center",padding:20}} onClick={()=>setCambiarDistFor(null)}>
+      <div style={{width:"100%",maxWidth:400,background:C.surface,borderRadius:16,padding:24}} onClick={e=>e.stopPropagation()}>
+        <div style={{color:C.text,fontWeight:800,fontSize:17,marginBottom:14}}>Corregir distribuidor</div>
+        <div style={{color:C.muted,fontSize:13,marginBottom:12}}>{cambiarDistFor.marca} {cambiarDistFor.modelo} — actualmente: {cambiarDistFor.revendedor_nombre}</div>
+        <select style={{...IS,appearance:"none",fontSize:16,marginBottom:16}} value={nuevoDistSel} onChange={e=>setNuevoDistSel(e.target.value)}>
+          <option value="">Seleccionar distribuidor...</option>
+          {dist.map((r,i)=><option key={r.id} value={r.id}>{(i+1)+". 🏪 "+r.nombre}</option>)}
+        </select>
+        <div style={{display:"flex",gap:10}}>
+          <Btn onClick={guardarNuevoDist} full variant="success">✓ Guardar</Btn>
+          <Btn onClick={()=>setCambiarDistFor(null)} variant="ghost">✕</Btn>
+        </div>
+      </div>
+    </div>}
   </div>;
 }
 
@@ -1048,6 +1087,7 @@ function Ventas({user}){
               <div style={{display:"flex",gap:6,alignItems:"center"}}><span style={badge(estado)}>{estado}</span><span style={{color:C.muted,fontSize:16}}>›</span></div>
             </div>
             <div style={{color:C.muted,fontSize:13,marginBottom:8}}>{s.fecha}{fmtHora(s.created_at)&&" · "+fmtHora(s.created_at)} · {s.cliente||"Sin cliente"} · {s.empleado}</div>
+            {s.imei&&<div style={{color:C.blue,fontFamily:"monospace",fontSize:12,marginBottom:8}}>IMEI: {s.imei}</div>}
             {(s.notas||"").includes("Accesorios:")&&<div style={{color:C.amber,fontSize:12,marginBottom:8}}>{s.notas.split("Accesorios:")[1].trim()}</div>}
             <div style={{display:"flex",justifyContent:"space-between"}}>
               <span style={{color:C.green,fontWeight:900,fontSize:18}}>S/.{precio.toLocaleString()}</span>
@@ -1155,18 +1195,29 @@ function Deudores({user}){
 function Distribuidores(){
   const [list,setList]=useState([]); const [loading,setLoading]=useState(true); const [show,setShow]=useState(false); const [toast,setToast]=useState(null);
   const [form,setForm]=useState({nombre:"",contacto:"",telefono:"",condicion_pago:"Al día siguiente"});
+  const [editId,setEditId]=useState(null);
   async function load(){setLoading(true);try{setList(await api.get("revendedores","?order=nombre.asc"));}catch(e){}setLoading(false);}
   useEffect(()=>{load();},[]);
   async function add(){if(!form.nombre.trim()){setToast({t:"error",m:"Ingresá el nombre"});return;}try{await api.post("revendedores",form);setForm({nombre:"",contacto:"",telefono:"",condicion_pago:"Al día siguiente"});setShow(false);setToast({t:"ok",m:"Distribuidor agregado"});load();}catch(e){setToast({t:"error",m:"Error"});}}
+  function startEdit(r){setEditId(r.id);setForm({nombre:r.nombre||"",contacto:r.contacto||"",telefono:r.telefono||"",condicion_pago:r.condicion_pago||"Al día siguiente"});setShow(false);}
+  async function saveEdit(){
+    if(!form.nombre.trim()){setToast({t:"error",m:"Ingresá el nombre"});return;}
+    try{
+      await api.patch("revendedores",editId,form);
+      await api.post("auditoria",{usuario:"",accion:"Editó distribuidor",tabla:"revendedores",detalle:form.nombre});
+      setEditId(null);setForm({nombre:"",contacto:"",telefono:"",condicion_pago:"Al día siguiente"});
+      setToast({t:"ok",m:"✅ Distribuidor actualizado"});load();
+    }catch(e){setToast({t:"error",m:"Error: "+e.message});}
+  }
   async function remove(id){if(!confirm("¿Eliminar?"))return;await api.del("revendedores",id);load();}
   return <div style={{flex:1,overflowY:"auto",padding:16}}>
     <Toast msg={toast} onClose={()=>setToast(null)}/>
     <div style={{display:"flex",alignItems:"center",justifyContent:"space-between",marginBottom:16}}>
       <h2 style={{fontSize:24,fontWeight:900}}>🏪 Distribuidores</h2>
-      <Btn onClick={()=>setShow(!show)} small>{show?"✕":"+ Agregar"}</Btn>
+      <Btn onClick={()=>{setShow(!show);setEditId(null);setForm({nombre:"",contacto:"",telefono:"",condicion_pago:"Al día siguiente"});}} small>{show?"✕":"+ Agregar"}</Btn>
     </div>
-    {show&&<div style={{...KS,border:"2px solid "+C.blue,marginBottom:16}} className="su">
-      <div style={{color:C.blue,fontWeight:800,fontSize:17,marginBottom:14}}>Nuevo distribuidor</div>
+    {(show||editId)&&<div style={{...KS,border:"2px solid "+C.blue,marginBottom:16}} className="su">
+      <div style={{color:C.blue,fontWeight:800,fontSize:17,marginBottom:14}}>{editId?"✏️ Editar distribuidor":"Nuevo distribuidor"}</div>
       <div style={{display:"flex",flexDirection:"column",gap:12}}>
         <Field label="Nombre ★" value={form.nombre} onChange={v=>setForm(p=>({...p,nombre:v}))} placeholder="Móvil Express"/>
         <Field label="Contacto" value={form.contacto} onChange={v=>setForm(p=>({...p,contacto:v}))} placeholder="Marco"/>
@@ -1174,8 +1225,8 @@ function Distribuidores(){
         <Field label="Condición de pago" value={form.condicion_pago} onChange={v=>setForm(p=>({...p,condicion_pago:v}))} options={["En el momento","En la noche","Al día siguiente","A los 2 días"]}/>
       </div>
       <div style={{display:"flex",gap:10,marginTop:14}}>
-        <Btn onClick={add} full>Guardar</Btn>
-        <Btn onClick={()=>setShow(false)} variant="ghost">✕</Btn>
+        <Btn onClick={editId?saveEdit:add} full>{editId?"✓ Guardar cambios":"Guardar"}</Btn>
+        <Btn onClick={()=>{setShow(false);setEditId(null);}} variant="ghost">✕</Btn>
       </div>
     </div>}
     {loading?<Spin/>:list.length===0?<div style={{textAlign:"center",color:C.muted,padding:40}}>Sin distribuidores</div>:list.map(r=><div key={r.id} style={{...KS,borderLeft:"4px solid "+C.blue,position:"relative"}}>
@@ -1183,7 +1234,10 @@ function Distribuidores(){
       <div style={{color:C.muted,fontSize:14}}>👤 {r.contacto||"—"}</div>
       <div style={{color:C.muted,fontSize:14}}>📱 {r.telefono||"—"}</div>
       <div style={{color:C.muted,fontSize:14}}>💳 {r.condicion_pago}</div>
-      <button onClick={()=>remove(r.id)} style={{position:"absolute",top:14,right:14,background:C.redDim,border:"1px solid rgba(248,113,113,0.3)",borderRadius:8,padding:"6px 12px",color:C.red,cursor:"pointer",fontSize:13}}>✕</button>
+      <div style={{position:"absolute",top:14,right:14,display:"flex",gap:8}}>
+        <button onClick={()=>startEdit(r)} style={{background:C.blueDim,border:"1px solid rgba(56,189,248,0.3)",borderRadius:8,padding:"6px 12px",color:C.blue,cursor:"pointer",fontSize:13}}>✏️</button>
+        <button onClick={()=>remove(r.id)} style={{background:C.redDim,border:"1px solid rgba(248,113,113,0.3)",borderRadius:8,padding:"6px 12px",color:C.red,cursor:"pointer",fontSize:13}}>✕</button>
+      </div>
     </div>)}
   </div>;
 }
